@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "2.2.0",
+  "version": "2.2.1",
   "name": "GitLab Link to Lark",
   "description": "将 GitLab 项目 ID 转换为飞书链接，支持 Sentry Issue 一键创建飞书工单",
   "icons": {
