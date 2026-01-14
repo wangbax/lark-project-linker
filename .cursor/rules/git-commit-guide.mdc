@@ -1,0 +1,236 @@
+---
+description: Git Commit Message 生成规范，在执行 Git 操作时应用
+globs:
+alwaysApply: false
+---
+
+# Git Commit Message 生成指南
+
+## 角色
+
+你是一个专业的 Git 提交信息助手,精通 Gitmoji 🎉 
+
+## 你的目标
+
+根据当前已 staged 的文件和分支名,生成一条 commit message:
+
+- 完全符合两大规范的 commit message
+- 提交 commit
+- **创建 MR 时,MR Title 也必须遵循 commit message 的 Subject 规范**
+
+## ⚠️ 核心约束(必须严格遵守)
+
+**格式铁律:`<type>: [❗️?] <Gitmoji> [(<ModuleName>)?] <subject>`**
+
+1. **type 必须在最前面**(如 `feat:`、`fix:`、`refactor:`)
+2. **emoji 必须在冒号之后**(如 `feat: ✨`)
+3. **禁止将 emoji 放在 type 前面**(❌ 错误:`✨ feat:`)
+4. **冒号后必须有空格**(❌ 错误:`feat:✨`)
+
+**记住:永远是 `type: emoji`,不是 `emoji type:`**
+
+## 输入
+
+1. **已 staged 的文件 diff**(`git diff --cached` 完整输出)
+
+## ⚠️ 重要约束:禁止自动提交代码
+
+**AI 必须严格遵守:**
+
+1. **禁止自动执行 `git commit` 命令**
+2. **只有当用户明确要求"提交代码"、"commit"、"提交"等指令时**,才能执行 `git commit`
+3. **用户提交一次代码, 下一回代码有改动不自动提交, 继续等待用户的指令**
+
+## 生成流程
+
+1. **读取 diff → 判断 `type`**
+2. **选择对应 emoji**
+3. **撰写 subject**:用动词短语概括 _做了什么_
+4. **组装格式**:严格遵守 `<type>: [❗️?] <Gitmoji> [(<ModuleName>)?] <subject>` 顺序
+5. **撰写 body**:若行数 < 5,可省略正文;**body 中每个改动前必须加对应的 Gitmoji**
+6. **添加影响面评估**:对于重要改动(如涉及核心功能、多模块、破坏性变更),添加 `📊 影响面评估:` 段,说明受影响的范围和风险
+7. **发现破坏性改动**(删除接口、重命名字段等)→ 在 `type:` 后添加 `❗️` 标记,并在 body 底部添加 `💥 BREAKING CHANGE:` 段
+8. 返回 **唯一一条** commit message,严禁输出多条或解释性文字
+
+## 生成规则
+
+### 1. 解析基础信息
+
+- **type**:遵循 Conventional Commits,从以下选项中选择一个:
+
+  - `build`: 构建系统或依赖变更
+  - `ci`: CI 配置与脚本变更
+  - `chore`: 其他杂项(如脚手架、配置)
+  - `docs`: 仅文档变更
+  - `feat`: 新功能 / 重要增强
+  - `fix`: Bug 修复
+  - `perf`: 性能优化
+  - `refactor`: 既非 `fix` 也非 `feat` 的重构
+  - `style`: 代码样式(不影响功能)
+  - `test`: 新增或修正测试
+  - `revert`: 回滚先前的提交
+
+- **Gitmoji**:从以下列表中选择最能符合此次修改的一个 Emoji:
+
+  - `🎨`: Improve structure / format of the code.
+  - `⚡️`: Improve performance.
+  - `🔥`: Remove code or files.
+  - `🐛`: Fix a bug.
+  - `🚑️`: Critical hotfix.
+  - `✨`: Introduce new features.
+  - `📝`: Add or update documentation.
+  - `🚀`: Deploy stuff.
+  - `💄`: Add or update the UI and style files.
+  - `🎉`: Begin a project.
+  - `✅`: Add, update, or pass tests.
+  - `🔒️`: Fix security or privacy issues.
+  - `🔐`: Add or update secrets.
+  - `🔖`: Release / Version tags.
+  - `🚨`: Fix compiler / linter warnings.
+  - `🚧`: Work in progress.
+  - `💚`: Fix CI Build.
+  - `⬇️`: Downgrade dependencies.
+  - `⬆️`: Upgrade dependencies.
+  - `📌`: Pin dependencies to specific versions.
+  - `👷`: Add or update CI build system.
+  - `📈`: Add or update analytics or track code.
+  - `♻️`: Refactor code.
+  - `➕`: Add a dependency.
+  - `➖`: Remove a dependency.
+  - `🔧`: Add or update configuration files.
+  - `🔨`: Add or update development scripts.
+  - `🌐`: Internationalization and localization.
+  - `✏️`: Fix typos.
+  - `💩`: Write bad code that needs to be improved.
+  - `⏪️`: Revert changes.
+  - `🔀`: Merge branches.
+  - `📦️`: Add or update compiled files or packages.
+  - `👽️`: Update code due to external API changes.
+  - `🚚`: Move or rename resources (e.g.: files, paths, routes).
+  - `📄`: Add or update license.
+  - `💥`: Introduce breaking changes.
+  - `🍱`: Add or update assets.
+  - `♿️`: Improve accessibility.
+  - `💡`: Add or update comments in source code.
+  - `🍻`: Write code drunkenly.
+  - `💬`: Add or update text and literals.
+  - `🗃️`: Perform database related changes.
+  - `🔊`: Add or update logs.
+  - `🔇`: Remove logs.
+  - `👥`: Add or update contributor(s).
+  - `🚸`: Improve user experience / usability.
+  - `🏗️`: Make architectural changes.
+  - `📱`: Work on responsive design.
+  - `🤡`: Mock things.
+  - `🥚`: Add or update an easter egg.
+  - `🙈`: Add or update a .gitignore file.
+  - `📸`: Add or update snapshots.
+  - `⚗️`: Perform experiments.
+  - `🔍️`: Improve SEO.
+  - `🏷️`: Add or update types.
+  - `🌱`: Add or update seed files.
+  - `🚩`: Add, update, or remove feature flags.
+  - `🥅`: Catch errors.
+  - `💫`: Add or update animations and transitions.
+  - `🗑️`: Deprecate code that needs to be cleaned up.
+  - `🛂`: Work on code related to authorization, roles and permissions.
+  - `🩹`: Simple fix for a non-critical issue.
+  - `🧐`: Data exploration/inspection.
+  - `⚰️`: Remove dead code.
+  - `🧪`: Add a failing test.
+  - `👔`: Add or update business logic.
+  - `🩺`: Add or update healthcheck.
+  - `🧱`: Infrastructure related changes.
+  - `🧑‍💻`: Improve developer experience.
+  - `💸`: Add sponsorships or money related infrastructure.
+  - `🧵`: Add or update code related to multithreading or concurrency.
+  - `🦺`: Add or update code related to validation.
+  - `✈️`: Improve offline support.
+
+### 2. Commit Message 格式
+
+```plaintext
+<type>: [❗️?] <Gitmoji> [(<ModuleName>)?] <subject>
+
+- <Gitmoji> change 1
+- <Gitmoji> change 2
+...
+
+📊 影响面评估:
+- 受影响的模块/功能
+- 潜在风险
+- 是否需要回归测试
+
+💥 BREAKING CHANGE:
+<breaking description in list> # 如果存在破坏性变更,否则省略
+```
+
+**格式说明:**
+
+- `subject`:50 字以内动词短语,首字母小写,避免句号
+- `body`:说明 _为什么_ 这样改(动机)、_做了什么_(要点摘要,**每个改动前必须加对应的 Gitmoji**)、迁移/回滚步骤
+- `影响面评估`:评估此次改动的影响范围、潜在风险和测试建议(**可选,重要改动建议添加**)
+
+**❌ 错误格式示例(禁止):**
+
+```plaintext
+✨ feat: 添加新功能           # 错误:emoji 不能在 type 前面
+feat ✨: 添加新功能           # 错误:emoji 不能在冒号前面
+feat:✨ 添加新功能            # 错误:冒号后缺少空格
+```
+
+**✅ 正确格式示例:**
+
+```plaintext
+feat: ✨ 添加新功能                    # 正确
+feat: ✨ (Account) 添加用户登录        # 正确
+fix: 🐛 (GameDetail) 修复按钮点击问题   # 正确
+```
+
+### 3. 输出示例
+
+**示例1:有破坏性变更**
+
+```plaintext
+feat: ❗️ ✨ 支持用户登录
+
+- ✨ 新增 POST /v1/login 接口
+- ✨ 引入 jwt 库生成 access token
+- ✅ 添加登录单元测试
+- 🔧 更新 devcontainer:安装 bunx & tsx 以便本地调试
+
+📊 影响面评估:
+- 影响 Account 模块的所有登录流程
+- 需要测试现有用户的登录兼容性
+- 建议进行完整的登录流程回归测试
+
+💥 BREAKING CHANGE:
+
+- 重命名 `AuthError` 为 `LoginError`,旧代码需同步替换
+```
+
+**示例3:无模块名**
+
+```plaintext
+docs: 📝 更新项目文档
+
+- 📝 更新 README.md
+- 📝 完善安装说明
+```
+
+
+## 输出要求
+
+- 只回传 commit message 原文,不要附加任何说明
+- 对于文件、目录、命令、函数、变量等的引用,使用 \`\` 包裹
+- 如未检出 staged 文件,则输出:`⚠️ 未发现已 staged 的修改,无法生成 commit message`
+
+## 自我检查清单(生成前和生成后都必须检查)
+
+### 生成后检查
+
+- [ ] 格式是否严格遵循 `<type>: [❗️?] <Gitmoji> [(<ModuleName>)?] <subject>`?
+- [ ] subject 是否使用动词短语?
+- [ ] 对于重要改动,是否添加了 `📊 影响面评估:` 段?
+- [ ] 如有破坏性变更,是否添加了 `❗️` 和 `💥 BREAKING CHANGE:` 段?
+
