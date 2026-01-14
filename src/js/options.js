@@ -3,6 +3,15 @@ import { getLarkConfig, setLarkConfig, isDev } from "./store";
 function main() {
   if (isDev) {
     document.getElementById("dev-inject").style.display = "block";
+    // Dev inject 按钮事件
+    const devInjectBtn = document.getElementById("dev-inject-btn");
+    if (devInjectBtn) {
+      devInjectBtn.addEventListener("click", function() {
+        const s = document.createElement('script');
+        s.src = 'http://localhost:3000/index.js';
+        document.body.appendChild(s);
+      });
+    }
   }
 
   const errMsgDom = document.getElementById("error");
@@ -27,7 +36,7 @@ function main() {
         return toggleError("请输入飞书命名空间");
       }
       if (!data.domain) {
-        return toggleError("请输入 Gitlab 地址");
+        return toggleError("请输入 GitLab/GitHub 域名地址");
       }
       if (app && !/^[a-zA-Z0-9]+(,[a-zA-Z0-9]+)*$/.test(app.trim())) {
         return toggleError("飞书命名空间格式不正确，请使用字母、数字，多个命名空间用逗号分隔");
@@ -64,6 +73,27 @@ function main() {
       }
     });
   }
+
+  // 折叠/展开功能
+  function initCollapsible() {
+    const header = document.getElementById('sentry-config-header');
+    const content = document.getElementById('sentry-config-content');
+    const arrow = document.getElementById('sentry-config-arrow');
+    
+    if (header && content && arrow) {
+      header.addEventListener('click', function() {
+        if (content.classList.contains('expanded')) {
+          content.classList.remove('expanded');
+          arrow.classList.add('collapsed');
+        } else {
+          content.classList.add('expanded');
+          arrow.classList.remove('collapsed');
+        }
+      });
+    }
+  }
+
+  initCollapsible();
 }
 
 document.addEventListener("DOMContentLoaded", main);

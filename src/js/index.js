@@ -1,32 +1,67 @@
-import { getLarkConfig, getLarkConfigSync } from "./store";
+/**
+ * GitLab & GitHub 飞书项目链接插件 - 主入口
+ * 
+ * 功能：
+ * - 自动识别并替换页面中的项目 ID（如 #TAP-6667127317）为可点击的飞书链接
+ * - 支持 GitLab 和 GitHub 两个平台
+ * - 智能缓存项目类型（story/issue）
+ * - 显示项目信息 tooltip
+ * 
+ * 架构：
+ * - index.js: 核心通用功能
+ * - gitlab-handler.js: GitLab 平台特定处理
+ * - github-handler.js: GitHub 平台特定处理
+ */
+
+import { 
+  getLarkConfig, 
+  getLarkConfigSync,
+  loadCacheFromStorage,
+  saveCacheToStorage,
+  cleanExpiredCache
+} from "./store";
 import { checkCondition, LARK_DOMAIN_HOST } from "./utils";
 import { MSG_EVENT } from "./event";
+import { createGitLabHandler } from "./gitlab-handler";
+import { createGitHubHandler } from "./github-handler";
 
 main();
 
 async function main() {
   if (!checkCondition()) return;
 
-  // {
-  //   [tid]: {
-  //     locker: Boolean,
-  //     error: Boolean,
-  //     data: Object,
-  //   }
-  // }
+  // ==================== 全局状态 ====================
+  
+  // 缓存项目信息
   let cacheMap = new Map();
+  
+  // Popover 配置
   const POPOVER_STYLE_ID = "lark-popover-link-style";
   let dom_lark_popover = null;
 
-  await getLarkConfig();
+  // 已处理的 DOM 节点
   const nodeMap = new Map();
-
-  // 使用 WeakSet 追踪已处理的 DOM 元素（避免重复处理）
+  
+  // 已处理的元素（用 WeakSet 追踪）
   const processedElements = new WeakSet();
 
-  // 记录每个 tid 的实际类型（用于统一同一 tid 的多个链接）
+  // 记录每个 tid 的实际类型
   const tidTypeMap = new Map();
 
+  // 检测当前平台
+  const isGitHub = window.location.host.includes('github.com');
+  const isGitLab = window.location.host.includes('gitlab');
+
+  // ==================== 缓存管理 ====================
+  
+  // 从 store.js 加载缓存
+  const cacheData = await loadCacheFromStorage();
+  // 将加载的缓存数据合并到 tidTypeMap 和 cacheMap
+  cacheData.tidTypeMap.forEach((value, key) => tidTypeMap.set(key, value));
+  cacheData.cacheMap.forEach((value, key) => cacheMap.set(key, value));
+
+  // ==================== 消息监听 ====================
+  
   chrome.runtime.onMessage.addListener(function (e) {
     const { message, data } = e;
     switch (message) {
@@ -37,305 +72,21 @@ async function main() {
           data: data.data,
         });
 
-        // 如果返回了实际的类型信息，更新所有该 tid 的链接
         if (data.actualType) {
           updateLinksWithCorrectType(data.tid, data.actualType);
+          saveCacheToStorage(data.tid, data.actualType, data.data);
         }
         break;
     }
   });
 
-  // 更新链接为正确的类型
-  function updateLinksWithCorrectType(tid, actualType) {
-    const LarkConfig = getLarkConfigSync();
-    if (!LarkConfig) return;
-
-    // 更新类型映射
-    tidTypeMap.set(tid, actualType);
-
-    const links = document.querySelectorAll(`a[data-tid="${tid}"]`);
-
-    links.forEach(link => {
-      const projectId = tid.split("-")[1];
-      const url = getLarkProjectLink(projectId, actualType);
-      if (link.href !== url) {
-        link.href = url;
-      }
-      // 更新 data-lark-type 属性
-      link.dataset.larkType = actualType;
-    });
-  }
-
+  // ==================== Popover 功能 ====================
+  
   initPopover();
-  initPageListener();
-  hideGitLabTooltips();
 
-  // 隐藏 GitLab 的 "Issue in Jira" tooltip
-  function hideGitLabTooltips() {
-    // 添加 CSS 来隐藏 GitLab 的 tooltip
-    const style = document.createElement("style");
-    style.id = "hide-gitlab-tooltips";
-    style.innerHTML = `
-      /* 隐藏飞书链接上的 GitLab tooltip */
-      .lark-project-link + [id^="gl-tooltip"],
-      [id^="gl-tooltip"]:has(.tooltip-inner span:contains("Issue in Jira")),
-      [id^="gl-tooltip"]:has(.tooltip-inner span:contains("issue in jira")) {
-        display: none !important;
-      }
-    `;
-    document.head.appendChild(style);
-
-    // 使用 MutationObserver 监听 tooltip 的出现
-    const tooltipObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            // 检查是否是 GitLab tooltip
-            if (node.id && node.id.startsWith('gl-tooltip')) {
-              const tooltipInner = node.querySelector('.tooltip-inner span');
-              if (tooltipInner && tooltipInner.textContent === 'Issue in Jira') {
-                // 检查关联的元素是否是飞书链接
-                const ariaDescribedBy = document.querySelector(`[aria-describedby="${node.id}"]`);
-                if (ariaDescribedBy && ariaDescribedBy.classList.contains('lark-project-link')) {
-                  node.style.display = 'none';
-                }
-              }
-            }
-          }
-        });
-      });
-    });
-
-    tooltipObserver.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  // 获取链接的上下文文本（用于智能判断类型）
-  function getContextText(link) {
-    // 方法1：尝试获取链接所在的完整容器文本
-    let contextElement = link.parentElement;
-
-    // 向上查找最多 5 层，找到包含完整文本的容器
-    for (let i = 0; i < 5 && contextElement; i++) {
-      const tagName = contextElement.tagName.toLowerCase();
-      // 如果是标题、段落、列表项等，使用该元素的文本
-      if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' ||
-        tagName === 'p' || tagName === 'li' || tagName === 'td' ||
-        contextElement.classList.contains('commit-row-message') ||
-        contextElement.classList.contains('commit-content') ||
-        contextElement.classList.contains('commit-detail') ||
-        contextElement.classList.contains('title')) {
-        return contextElement.textContent || '';
-      }
-      contextElement = contextElement.parentElement;
-    }
-
-    // 方法2：如果是 commit 列表，尝试查找同级的 commit-row-message
-    const commitContent = link.closest('.commit-content, .commit-detail, .commit');
-    if (commitContent) {
-      const commitMessage = commitContent.querySelector('.commit-row-message, .commit-row-description');
-      if (commitMessage) {
-        return commitMessage.textContent + ' ' + link.textContent;
-      }
-    }
-
-    // 方法3：获取前面的文本节点（处理 #XX-xxx 这种情况）
-    let previousText = '';
-    let prevNode = link.previousSibling;
-    // 向前查找最多 3 个兄弟节点
-    for (let i = 0; i < 3 && prevNode; i++) {
-      if (prevNode.nodeType === Node.TEXT_NODE) {
-        previousText = prevNode.textContent + previousText;
-      } else if (prevNode.nodeType === Node.ELEMENT_NODE) {
-        previousText = prevNode.textContent + previousText;
-      }
-      prevNode = prevNode.previousSibling;
-    }
-
-    // 如果找到了前置文本，组合起来
-    if (previousText.trim()) {
-      return previousText + ' ' + link.textContent;
-    }
-
-    // 默认返回父元素或链接自身的文本
-    return link.parentElement?.textContent || link.textContent;
-  }
-
-  // 全局扫描：处理页面上所有现有的 GFM 链接
-  function scanAllGfmLinks() {
-    const allGfmLinks = document.querySelectorAll('a.gfm.gfm-issue');
-
-    allGfmLinks.forEach(link => {
-      // 检查是否已处理
-      const alreadyProcessed = processedElements.has(link) || link.classList.contains('lark-project-link');
-
-      if (alreadyProcessed) {
-        // 即使已处理，也要检查类型是否需要更新
-        const currentTid = link.dataset.tid;
-        const currentType = link.dataset.larkType;
-        const correctType = tidTypeMap.get(currentTid);
-
-        if (correctType && currentType !== correctType) {
-          // 类型不一致，需要更新
-          const projectId = currentTid.split("-")[1];
-          const url = getLarkProjectLink(projectId, correctType);
-          link.href = url;
-          link.dataset.larkType = correctType;
-          // 确保在 WeakSet 中
-          processedElements.add(link);
-        }
-        return;
-      }
-
-      const LarkConfig = getLarkConfigSync();
-      if (!LarkConfig) return;
-
-      const prefixes = LarkConfig?.prefixes || "m,f";
-      const prefixList = prefixes.split(",").map(p => p.trim().toLowerCase()).filter(p => p);
-      const text = link.textContent.trim();
-      // 要求数字部分至少7位数
-      const match = text.match(new RegExp(`(${prefixList.join("|")})-\\d{7,}`, "i"));
-
-      if (match) {
-        const tid = match[0];
-        const projectId = tid.split("-")[1];
-        const prefix = tid.split("-")[0].toLowerCase();
-
-        // 检查是否已经有这个 tid 的类型记录
-        let type = tidTypeMap.get(tid);
-
-        if (!type) {
-          // 根据上下文智能判断初始类型
-          type = "story";
-
-          if (prefix === "m") {
-            type = "story";
-          } else if (prefix === "f") {
-            type = "issue";
-          } else {
-            // 检查链接所在的文本上下文，根据 commit 类型前缀判断
-            const contextText = getContextText(link);
-            const lowerContext = contextText.toLowerCase();
-
-            // fix/bugfix/hotfix 等通常是 issue（修复类）
-            if (/\b(fix|bugfix|hotfix|bug)[\s:]/i.test(lowerContext)) {
-              type = "issue";
-            }
-            // feat/feature 通常是 story（新功能）
-            else if (/\b(feat|feature)[\s:]/i.test(lowerContext)) {
-              type = "story";
-            }
-            // chore/refactor/perf/style/test/docs 等通常是 story（日常任务）
-            else if (/\b(chore|refactor|perf|style|test|docs|build|ci)[\s:]/i.test(lowerContext)) {
-              type = "story";
-            }
-            // 默认保持 story
-          }
-
-          // 记录初始类型
-          tidTypeMap.set(tid, type);
-        }
-
-        const url = getLarkProjectLink(projectId, type);
-
-        // 这些是独立的 issue 链接，整个链接都应该指向飞书
-        link.href = url;
-        link.target = "_blank";
-        link.classList.add('lark-project-link');
-        link.dataset.tid = tid;
-        link.dataset.larkType = type;
-
-        // 标记为已处理
-        processedElements.add(link);
-
-        // 移除 GitLab 的 tooltip 属性
-        removeGitLabTooltipAttributes(link);
-
-        fetchLarkProjectInfo({
-          tid: tid,
-          app: LarkConfig.app,
-        });
-
-        bindPopoverEvent(link);
-      }
-    });
-  }
-
-  // 立即执行一次全局扫描
-  scanAllGfmLinks();
-
-  // 防抖函数
-  let scanTimer = null;
-  function debouncedScanAllGfmLinks() {
-    if (scanTimer) {
-      clearTimeout(scanTimer);
-    }
-    scanTimer = setTimeout(() => {
-      scanAllGfmLinks();
-    }, 100); // 100ms 防抖
-  }
-
-  // 页面变化时重新扫描（使用防抖优化性能）
-  const observer = new MutationObserver((mutations) => {
-    // 检查是否有新增的节点
-    let shouldScan = false;
-    for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
-        shouldScan = true;
-        break;
-      }
-    }
-    if (shouldScan) {
-      debouncedScanAllGfmLinks();
-    }
-  });
-
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true
-  });
-
-  // 监听 URL 变化（GitLab 使用 History API）
-  let lastUrl = location.href;
-
-  const titleObserver = new MutationObserver(() => {
-    const currentUrl = location.href;
-    if (currentUrl !== lastUrl) {
-      lastUrl = currentUrl;
-      // URL 变化时延迟扫描，等待新内容加载
-      setTimeout(() => {
-        scanAllGfmLinks();
-      }, 500);
-    }
-  });
-
-  const titleElement = document.querySelector('title');
-  if (titleElement) {
-    titleObserver.observe(titleElement, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  // 监听 popstate 事件（浏览器前进/后退）
-  window.addEventListener('popstate', () => {
-    setTimeout(() => {
-      scanAllGfmLinks();
-    }, 500);
-  });
-
-  // 监听 GitLab 的 Vue 路由变化
-  window.addEventListener('hashchange', () => {
-    setTimeout(() => {
-      scanAllGfmLinks();
-    }, 300);
-  });
-
-  // 初始化 popover 节点
   function initPopover() {
     if (document.getElementById(POPOVER_STYLE_ID)) return;
+    
     const style = document.createElement("style");
     style.id = POPOVER_STYLE_ID;
     style.innerHTML = `
@@ -348,6 +99,17 @@ async function main() {
     .lark-project-link:hover {
       text-decoration: none;
       background-color: #a1d1fc;
+    }
+    .github-lark-id {
+      padding: 0 2px;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      transition: all .2s;
+    }
+    .github-lark-id:hover {
+      background-color: #a1d1fc;
+      text-decoration: none;
     }
     .lark-popover {
       display: none;
@@ -383,59 +145,19 @@ async function main() {
     }
   `;
     document.head.appendChild(style);
+    
     const div = document.createElement("div");
     div.classList.add("lark-popover");
     document.body.appendChild(div);
     dom_lark_popover = div;
   }
 
-  // 初始化页面节点监听
-  async function initPageListener() {
-    const config = await getLarkConfig();
-    if (!config) return;
-    const dom_content_wrapper = document.querySelector(".content-wrapper");
-
-    const ro = new ResizeObserver(function () {
-      const dom_commits_list = document.getElementById("commits-list");
-      if (dom_commits_list) {
-        replaceCommitList();
-      }
-
-      const dom_tree_holder = document.getElementById("tree-holder");
-      if (dom_tree_holder) {
-        const dom_project_last_commit = dom_tree_holder.querySelector(
-          ".project-last-commit"
-        );
-        // 使用 firstElementChild 确保获取的是 Element 而不是文本节点
-        const targetElement = dom_project_last_commit?.firstElementChild || dom_project_last_commit;
-        if (targetElement && targetElement instanceof Element) {
-          const ro = new ResizeObserver(replaceTreeHolderProjectLastCommit);
-          ro.observe(targetElement);
-        }
-      }
-
-      const dom_content_body = document.getElementById("content-body");
-      if (dom_content_body) {
-        const ro = new ResizeObserver(replaceContentBodyCommitList);
-        ro.observe(dom_content_body);
-      }
-
-      replaceMergeRequestTitle();
-    });
-
-    if (dom_content_wrapper) {
-      ro.observe(dom_content_wrapper);
-    }
-  }
-
-  // 鼠标移入事件
   function enterHandler(e) {
     const rect = e.target.getBoundingClientRect();
     const tid = e.target.dataset.tid;
     const larkType = e.target.dataset.larkType || "story";
     const cache = cacheMap.get(tid);
 
-    // 根据类型设置默认文本
     let innerHTML = larkType === "issue" ? "Issue in Lark" : "Story in Lark";
 
     if (cache) {
@@ -447,43 +169,26 @@ async function main() {
     }
     dom_lark_popover.innerHTML = innerHTML;
 
-    // 显示 tooltip
     dom_lark_popover.classList.remove("lark-popover-hide");
     dom_lark_popover.classList.add("lark-popover-show");
 
-    // 计算居中位置
     const linkCenterX = rect.x + rect.width / 2;
-    const tooltipWidth = dom_lark_popover.offsetWidth;
-
-    // 设置位置：水平居中，垂直在链接上方（增加 8px 间距）
     dom_lark_popover.style.setProperty("top", `${rect.y}px`);
     dom_lark_popover.style.setProperty("left", `${linkCenterX}px`);
     dom_lark_popover.style.setProperty("transform", `translate(-50%, calc(-100% - 8px))`);
   }
 
-  // 鼠标移出事件
   function leaveHandler() {
     dom_lark_popover.classList.remove("lark-popover-show");
   }
 
-  // 移除 GitLab 的 tooltip 属性
-  function removeGitLabTooltipAttributes(element) {
-    // 移除 GitLab 的 tooltip 相关属性
-    element.removeAttribute('aria-describedby');
-    element.removeAttribute('data-original-title');
-    element.removeAttribute('title');
-
-    // 移除 has-tooltip 类
-    element.classList.remove('has-tooltip');
-  }
-
-  // 绑定 popover 事件
   function bindPopoverEvent(dom) {
     dom.addEventListener("mouseenter", enterHandler);
     dom.addEventListener("mouseleave", leaveHandler);
   }
 
-  // 获取 Lark 项目链接
+  // ==================== 链接生成与更新 ====================
+  
   function getLarkProjectLink(projectId, type = "story") {
     const LarkConfig = getLarkConfigSync();
     if (type === "issue")
@@ -498,10 +203,15 @@ async function main() {
       return;
     }
 
+    const cachedType = tidTypeMap.get(tid);
+    if (cachedType) {
+      updateLinksWithCorrectType(tid, cachedType);
+    }
+
     cacheMap.set(tid, {
       locker: true,
       error: false,
-      data: null,
+      data: cacheMap.get(tid)?.data || null,
     });
 
     chrome.runtime.sendMessage({
@@ -513,36 +223,137 @@ async function main() {
     });
   }
 
-  // 新方法：处理 GitLab 自动生成的 issue 链接
+  function updateLinksWithCorrectType(tid, actualType) {
+    const LarkConfig = getLarkConfigSync();
+    if (!LarkConfig) return;
+
+    tidTypeMap.set(tid, actualType);
+
+    // 更新 GitLab 的链接
+    const links = document.querySelectorAll(`a[data-tid="${tid}"]`);
+    links.forEach(link => {
+      // 检查父元素是否是导航链接
+      const parentIsNavigationLink = 
+        link.parentElement?.classList.contains('js-prefetch-document') ||
+        link.parentElement?.classList.contains('js-navigation-open') ||
+        link.parentElement?.id?.startsWith('issue_') ||
+        link.parentElement?.id?.startsWith('merge_request_') ||
+        link.parentElement?.closest('.js-issue-row') !== null ||
+        link.parentElement?.closest('.mr-list, .issuable-list') !== null;
+      
+      if (parentIsNavigationLink) {
+        // 这是导航链接内部的飞书链接，只更新类型和 URL，不移除属性
+        const projectId = tid.split("-")[1];
+        const url = getLarkProjectLink(projectId, actualType);
+        if (link.href !== url) {
+          link.href = url;
+        }
+        link.dataset.larkType = actualType;
+        return;
+      }
+      
+      const projectId = tid.split("-")[1];
+      const url = getLarkProjectLink(projectId, actualType);
+      if (link.href !== url) {
+        link.href = url;
+      }
+      link.dataset.larkType = actualType;
+    });
+
+    // 更新 GitHub 的链接
+    const githubSpans = document.querySelectorAll(`span.github-lark-id[data-tid="${tid}"]`);
+    githubSpans.forEach(span => {
+      const projectId = tid.split("-")[1];
+      const url = getLarkProjectLink(projectId, actualType);
+      span.dataset.larkType = actualType;
+      span.dataset.larkUrl = url;
+    });
+  }
+
+  // ==================== 工具函数 ====================
+  
+  function removeGitLabTooltipAttributes(element) {
+    element.removeAttribute('aria-describedby');
+    element.removeAttribute('data-original-title');
+    element.removeAttribute('title');
+    element.removeAttribute('aria-label');
+    element.classList.remove('has-tooltip');
+    element.removeAttribute('data-hovercard-type');
+    element.removeAttribute('data-hovercard-url');
+  }
+
+  function getContextText(link) {
+    let contextElement = link.parentElement;
+
+    for (let i = 0; i < 5 && contextElement; i++) {
+      const tagName = contextElement.tagName.toLowerCase();
+      if (tagName === 'h1' || tagName === 'h2' || tagName === 'h3' ||
+        tagName === 'p' || tagName === 'li' || tagName === 'td' ||
+        contextElement.classList.contains('commit-row-message') ||
+        contextElement.classList.contains('commit-content') ||
+        contextElement.classList.contains('commit-detail') ||
+        contextElement.classList.contains('title')) {
+        return contextElement.textContent || '';
+      }
+      contextElement = contextElement.parentElement;
+    }
+
+    const commitContent = link.closest('.commit-content, .commit-detail, .commit');
+    if (commitContent) {
+      const commitMessage = commitContent.querySelector('.commit-row-message, .commit-row-description');
+      if (commitMessage) {
+        return commitMessage.textContent + ' ' + link.textContent;
+      }
+    }
+
+    let previousText = '';
+    let prevNode = link.previousSibling;
+    for (let i = 0; i < 3 && prevNode; i++) {
+      if (prevNode.nodeType === Node.TEXT_NODE) {
+        previousText = prevNode.textContent + previousText;
+      } else if (prevNode.nodeType === Node.ELEMENT_NODE) {
+        previousText = prevNode.textContent + previousText;
+      }
+      prevNode = prevNode.previousSibling;
+    }
+
+    if (previousText.trim()) {
+      return previousText + ' ' + link.textContent;
+    }
+
+    return link.parentElement?.textContent || link.textContent;
+  }
+
   function replaceLarkLinks(dom) {
     const LarkConfig = getLarkConfigSync();
     if (!LarkConfig) {
       return false;
     }
 
-    // 获取配置的前缀，默认为 m,f
     const prefixes = LarkConfig?.prefixes || "m,f";
     const prefixList = prefixes.split(",").map(p => p.trim().toLowerCase()).filter(p => p);
-    // 要求数字部分至少7位数
     const reg = new RegExp(`^(${prefixList.join("|")})-\\d{7,}$`, "i");
-
 
     let hasReplaced = false;
     let issueLinks = [];
 
-    // 只处理 GitLab 自动生成的独立 issue 链接（.gfm.gfm-issue）
-    if (dom.tagName === 'A' && (dom.classList.contains('gfm-issue') || dom.classList.contains('gfm'))) {
+    const linkSelector = isGitHub 
+      ? 'a.issue-link, a[data-hovercard-type="issue"], a[data-hovercard-type="pull_request"]'
+      : 'a.gfm.gfm-issue, a.gfm-issue, a.js-prefetch-document';
+
+    if (dom.tagName === 'A' && (
+      dom.classList.contains('gfm-issue') || 
+      dom.classList.contains('gfm') || 
+      dom.classList.contains('issue-link') ||
+      dom.hasAttribute('data-hovercard-type')
+    )) {
       issueLinks = [dom];
     } else {
-      // 在容器内查找 GitLab 自动生成的 issue 链接
-      issueLinks = dom.querySelectorAll('a.gfm.gfm-issue, a.gfm-issue');
+      issueLinks = dom.querySelectorAll(linkSelector);
     }
-
 
     Array.from(issueLinks).forEach(link => {
       const text = link.textContent.trim();
-
-      // 检查链接文本是否包含前缀模式（数字至少7位）
       const match = text.match(new RegExp(`(${prefixList.join("|")})-\\d{7,}`, "i"));
 
       if (match) {
@@ -550,8 +361,6 @@ async function main() {
         const projectId = tid.split("-")[1];
         const prefix = tid.split("-")[0].toLowerCase();
 
-
-        // 保持向后兼容：m->story, f->issue
         let type = "story";
         if (prefix === "m") {
           type = "story";
@@ -559,202 +368,328 @@ async function main() {
           type = "issue";
         }
 
-        // 替换链接的 href 为飞书链接
         const url = getLarkProjectLink(projectId, type);
 
-        const oldHref = link.href;
-        link.href = url;
-        link.target = "_blank";
-        link.classList.add('lark-project-link');
-        link.dataset.tid = tid;
-        link.dataset.larkType = type;
+        // 检查是否是导航链接（MR 列表、Issue 列表等）
+        const isNavigationLink = 
+          link.classList.contains('js-prefetch-document') ||
+          link.classList.contains('js-navigation-open') ||
+          link.id?.startsWith('issue_') ||
+          link.id?.startsWith('merge_request_') ||
+          link.closest('.js-issue-row') !== null ||
+          link.closest('.mr-list, .issuable-list') !== null;
 
-        // 移除 GitLab 的 tooltip 属性
-        removeGitLabTooltipAttributes(link);
+        if (isNavigationLink) {
+          // 对于导航链接，在其内部替换文本为飞书链接
+          const [isFind, newContent] = replaceProjectIdToLarkProjectLink(link);
+          if (isFind) {
+            link.innerHTML = newContent;
+            // 为新创建的飞书链接绑定事件
+            const larkLinks = link.querySelectorAll('.lark-project-link');
+            larkLinks.forEach(larkLink => {
+              bindPopoverEvent(larkLink);
+            });
+            hasReplaced = true;
+          }
+        } else {
+          // 对于非导航链接（如 gfm-issue 引用），直接修改 href
+          link.href = url;
+          link.target = "_blank";
+          link.classList.add('lark-project-link');
+          link.dataset.tid = tid;
+          link.dataset.larkType = type;
 
-        // 获取飞书项目信息
-        fetchLarkProjectInfo({
-          tid: tid,
-          app: LarkConfig.app,
-        });
+          removeGitLabTooltipAttributes(link);
 
-        // 绑定 popover 事件
-        bindPopoverEvent(link);
-        hasReplaced = true;
+          fetchLarkProjectInfo({
+            tid: tid,
+            app: LarkConfig.app,
+          });
+
+          bindPopoverEvent(link);
+          hasReplaced = true;
+        }
       }
     });
 
     return hasReplaced;
   }
 
-  // 旧方法：替换纯文本中的项目 ID 为 Lark 项目链接（向后兼容）
   function replaceProjectIdToLarkProjectLink(dom, className) {
     const LarkConfig = getLarkConfigSync();
-    // 获取配置的前缀，默认为 m,f
     const prefixes = LarkConfig?.prefixes || "m,f";
     const prefixList = prefixes.split(",").map(p => p.trim().toLowerCase()).filter(p => p);
-    // 要求数字部分至少7位数，匹配带 # 号的格式
     const reg = new RegExp(`#(${prefixList.join("|")})-\\d{7,}`, "gi");
+
+    const contextText = dom.textContent || dom.innerText || "";
+    const lowerContext = contextText.toLowerCase();
 
     let isFind = false;
     const content = dom.innerHTML.replace(reg, ($0, $1) => {
-      // $0 是完整匹配（包含 #），$1 是括号中的前缀部分
-      const fullMatch = $0; // 如 #XX-6478178330
-      const tid = fullMatch.substring(1); // 移除 # 号，得到 XX-6478178330
+      const fullMatch = $0;
+      const tid = fullMatch.substring(1);
       const projectId = tid.split("-")[1];
       const prefix = tid.split("-")[0].toLowerCase();
       isFind = true;
 
-      // 保持向后兼容：m->story, f->issue
-      let type = "story";
-      if (prefix === "m") {
-        type = "story";
-      } else if (prefix === "f") {
-        type = "issue";
+      let type = tidTypeMap.get(tid);
+
+      if (!type) {
+        if (prefix === "m") {
+          type = "story";
+        } else if (prefix === "f") {
+          type = "issue";
+        } else {
+          type = "story";
+          
+          if (/^(fix|bugfix|hotfix|bug)[\s:]/i.test(lowerContext)) {
+            type = "issue";
+          } else if (/^(feat|feature)[\s:]/i.test(lowerContext)) {
+            type = "story";
+          } else if (/^(chore|refactor|perf|style|test|docs|build|ci)[\s:]/i.test(lowerContext)) {
+            type = "story";
+          }
+        }
+        
+        tidTypeMap.set(tid, type);
       }
-      // 对于其他前缀，默认使用 story，后端会动态判断
 
       const url = getLarkProjectLink(projectId, type);
       fetchLarkProjectInfo({
         tid: tid,
         app: LarkConfig.app,
       });
-      // 只替换 #XX-xxx 部分为飞书链接
       return `<a class='lark-project-link ${className ? className : ""
         }' href='${url}' target='_blank' data-tid="${tid}" data-lark-type="${type}" >${fullMatch}</a>`;
     });
     return [isFind, content];
   }
 
-  // 替换 commit message 中的项目 ID 为 Lark 项目链接
-  function replaceCommitList() {
-    const dom_commits_rows = document.getElementsByClassName("commits-row");
+  // ==================== 全局扫描 ====================
+  
+  function scanAllGfmLinks() {
+    const selector = isGitHub 
+      ? 'a.issue-link, a[data-hovercard-type="issue"], a[data-hovercard-type="pull_request"]'
+      : 'a.gfm.gfm-issue, a.js-prefetch-document';
+    
+    const allGfmLinks = document.querySelectorAll(selector);
 
-    Array.from(dom_commits_rows).forEach((item) => {
-      const dom_commit_list = item.getElementsByClassName("commit-list")[0];
-      const dom_commit_list_item =
-        dom_commit_list.getElementsByClassName("commit");
-      Array.from(dom_commit_list_item).forEach((row) => {
-        if (nodeMap.has(row)) return;
+    allGfmLinks.forEach(link => {
+      const alreadyProcessed = processedElements.has(link) || link.classList.contains('lark-project-link');
 
-        // 在整个 commit row 中查找链接（而不是只在第一个链接中查找）
-        let hasReplaced = replaceLarkLinks(row);
+      if (alreadyProcessed) {
+        const currentTid = link.dataset.tid;
+        const currentType = link.dataset.larkType;
+        const correctType = tidTypeMap.get(currentTid);
 
-        // 如果没有找到链接，尝试旧方法处理纯文本（向后兼容）
-        if (!hasReplaced) {
-          const dom_commit_row_message =
-            row.getElementsByClassName("commit-row-message")[0];
-          if (dom_commit_row_message) {
-            const result = replaceProjectIdToLarkProjectLink(
-              dom_commit_row_message
-            );
-            if (result[0]) {
-              dom_commit_row_message.innerHTML = result[1];
-              const link =
-                dom_commit_row_message.querySelector(".lark-project-link");
-              bindPopoverEvent(link);
-              hasReplaced = true;
+        if (correctType && currentType !== correctType) {
+          const projectId = currentTid.split("-")[1];
+          const url = getLarkProjectLink(projectId, correctType);
+          link.href = url;
+          link.dataset.larkType = correctType;
+          processedElements.add(link);
+        }
+        return;
+      }
+
+      const LarkConfig = getLarkConfigSync();
+      if (!LarkConfig) return;
+
+      const prefixes = LarkConfig?.prefixes || "m,f";
+      const prefixList = prefixes.split(",").map(p => p.trim().toLowerCase()).filter(p => p);
+      const text = link.textContent.trim();
+      const match = text.match(new RegExp(`(${prefixList.join("|")})-\\d{7,}`, "i"));
+
+      if (match) {
+        const tid = match[0];
+        const projectId = tid.split("-")[1];
+        const prefix = tid.split("-")[0].toLowerCase();
+
+        let type = tidTypeMap.get(tid);
+
+        if (!type) {
+          type = "story";
+
+          if (prefix === "m") {
+            type = "story";
+          } else if (prefix === "f") {
+            type = "issue";
+          } else {
+            const contextText = getContextText(link);
+            const lowerContext = contextText.toLowerCase();
+
+            if (/\b(fix|bugfix|hotfix|bug)[\s:]/i.test(lowerContext)) {
+              type = "issue";
+            } else if (/\b(feat|feature)[\s:]/i.test(lowerContext)) {
+              type = "story";
+            } else if (/\b(chore|refactor|perf|style|test|docs|build|ci)[\s:]/i.test(lowerContext)) {
+              type = "story";
             }
           }
+
+          tidTypeMap.set(tid, type);
         }
 
-        if (hasReplaced) {
-          nodeMap.set(row, true);
-        }
-      });
-    });
-  }
+        const url = getLarkProjectLink(projectId, type);
 
-  // 替换项目 ID 为 Lark 项目链接
-  function replaceTreeHolderProjectLastCommit() {
-    const dom_tree_holder = document.getElementById("tree-holder");
-    if (!dom_tree_holder) return;
-    const dom_project_last_commit = dom_tree_holder.querySelector(
-      ".project-last-commit"
-    );
-    if (!dom_project_last_commit) return;
-    if (nodeMap.has(dom_project_last_commit)) return;
+        // 检查是否是导航链接（MR 列表、Issue 列表等）
+        const isNavigationLink = 
+          link.classList.contains('js-prefetch-document') ||
+          link.classList.contains('js-navigation-open') ||
+          link.id?.startsWith('issue_') ||
+          link.id?.startsWith('merge_request_') ||
+          link.closest('.js-issue-row') !== null ||
+          link.closest('.mr-list, .issuable-list') !== null;
 
-    // 在整个 project-last-commit 容器中查找链接
-    let hasReplaced = replaceLarkLinks(dom_project_last_commit);
+        if (isNavigationLink) {
+          // 对于导航链接，在其内部替换文本为飞书链接
+          const [isFind, newContent] = replaceProjectIdToLarkProjectLink(link);
+          if (isFind) {
+            link.innerHTML = newContent;
+            // 为新创建的飞书链接绑定事件
+            const larkLinks = link.querySelectorAll('.lark-project-link');
+            larkLinks.forEach(larkLink => {
+              bindPopoverEvent(larkLink);
+            });
+          }
+        } else {
+          // 对于非导航链接（如 gfm-issue 引用），直接修改 href
+          link.href = url;
+          link.target = "_blank";
+          link.classList.add('lark-project-link');
+          link.dataset.tid = tid;
+          link.dataset.larkType = type;
 
-    // 如果没有找到链接，尝试旧方法处理纯文本（向后兼容）
-    if (!hasReplaced) {
-      const dom_commit_row_message = dom_project_last_commit.querySelector(
-        ".commit-row-message"
-      );
-      if (dom_commit_row_message) {
-        const result = replaceProjectIdToLarkProjectLink(dom_commit_row_message);
-        if (result[0]) {
-          dom_commit_row_message.innerHTML = result[1];
-          const link = dom_commit_row_message.querySelector(".lark-project-link");
+          removeGitLabTooltipAttributes(link);
+
+          fetchLarkProjectInfo({
+            tid: tid,
+            app: LarkConfig.app,
+          });
+
           bindPopoverEvent(link);
-          hasReplaced = true;
         }
-      }
-    }
 
-    if (hasReplaced) {
-      nodeMap.set(dom_project_last_commit, true);
-    }
-  }
-
-  // 替换内容区域的 commit list
-  function replaceContentBodyCommitList() {
-    // 注意：.merge-request-title-text 在新版 GitLab 中可能不存在
-    // 这里保留旧逻辑以兼容旧版本
-    const rows = document.getElementsByClassName("merge-request-title-text");
-    Array.from(rows).forEach((item) => {
-      const dom_a = item.querySelector("a");
-      if (nodeMap.has(dom_a)) return;
-
-      // 优先使用新方法处理已存在的链接
-      let hasReplaced = replaceLarkLinks(dom_a);
-
-      // 如果没有找到链接，尝试旧方法处理纯文本（向后兼容）
-      if (!hasReplaced) {
-        const result = replaceProjectIdToLarkProjectLink(dom_a);
-        if (result[0]) {
-          dom_a.innerHTML = result[1];
-          const link = dom_a.querySelector(".lark-project-link");
-          bindPopoverEvent(link);
-          hasReplaced = true;
-        }
-      }
-
-      if (hasReplaced) {
-        nodeMap.set(dom_a, true);
+        processedElements.add(link);
       }
     });
   }
 
-  // 替换 merge request title
-  function replaceMergeRequestTitle() {
-    const dom_merge_request_details = document.querySelector(
-      ".merge-request-details"
-    );
-    if (!dom_merge_request_details) return;
-    const dom_merge_request_title =
-      dom_merge_request_details.querySelector(".title");
-    if (!dom_merge_request_title) return;
-    if (nodeMap.has(dom_merge_request_title)) return;
+  // ==================== 创建上下文对象 ====================
+  
+  const context = {
+    nodeMap,
+    tidTypeMap,
+    cacheMap,
+    processedElements,
+    getLarkProjectLink,
+    fetchLarkProjectInfo,
+    bindPopoverEvent,
+    replaceLarkLinks,
+    replaceProjectIdToLarkProjectLink,
+    getLarkConfigSync,
+    enterHandler,
+    leaveHandler,
+    removeGitLabTooltipAttributes,
+    getContextText
+  };
 
-    // 在标题容器中查找所有链接
-    let hasReplaced = replaceLarkLinks(dom_merge_request_title);
+  // ==================== 初始化平台处理器 ====================
+  
+  let platformHandler;
+  
+  if (isGitLab) {
+    platformHandler = createGitLabHandler(context);
+    platformHandler.init();
+  } else if (isGitHub) {
+    platformHandler = createGitHubHandler(context);
+    platformHandler.init();
+  }
 
-    // 如果没有找到链接，尝试旧方法处理纯文本（向后兼容）
-    if (!hasReplaced) {
-      const result = replaceProjectIdToLarkProjectLink(dom_merge_request_title);
-      if (result[0]) {
-        dom_merge_request_title.innerHTML = result[1];
-        const link = dom_merge_request_title.querySelector(".lark-project-link");
-        bindPopoverEvent(link);
-        hasReplaced = true;
+  // ==================== 通用监听 ====================
+  
+  // 立即执行一次全局扫描
+  scanAllGfmLinks();
+  if (platformHandler && isGitHub) {
+    platformHandler.replaceGitHubCommits();
+    platformHandler.replaceGitHubPullRequests();
+  }
+
+  // 防抖扫描
+  let scanTimer = null;
+  function debouncedScanAllGfmLinks() {
+    if (scanTimer) {
+      clearTimeout(scanTimer);
+    }
+    scanTimer = setTimeout(() => {
+      scanAllGfmLinks();
+      if (platformHandler && isGitHub) {
+        platformHandler.replaceGitHubCommits();
+        platformHandler.replaceGitHubPullRequests();
+      }
+    }, 100);
+  }
+
+  // 页面变化监听
+  const observer = new MutationObserver((mutations) => {
+    let shouldScan = false;
+    for (const mutation of mutations) {
+      if (mutation.addedNodes.length > 0) {
+        shouldScan = true;
+        break;
       }
     }
-
-    if (hasReplaced) {
-      nodeMap.set(dom_merge_request_title, true);
+    if (shouldScan) {
+      debouncedScanAllGfmLinks();
     }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  // URL 变化监听
+  let lastUrl = location.href;
+  const titleObserver = new MutationObserver(() => {
+    const currentUrl = location.href;
+    if (currentUrl !== lastUrl) {
+      lastUrl = currentUrl;
+      setTimeout(() => {
+        scanAllGfmLinks();
+        if (platformHandler && isGitHub) {
+          platformHandler.replaceGitHubCommits();
+          platformHandler.replaceGitHubPullRequests();
+        }
+      }, 500);
+    }
+  });
+
+  const titleElement = document.querySelector('title');
+  if (titleElement) {
+    titleObserver.observe(titleElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  // popstate 事件监听
+  window.addEventListener('popstate', () => {
+    setTimeout(() => {
+      scanAllGfmLinks();
+      if (platformHandler && isGitHub) {
+        platformHandler.replaceGitHubCommits();
+        platformHandler.replaceGitHubPullRequests();
+      }
+    }, 500);
+  });
+
+  // GitLab hashchange 监听
+  if (isGitLab) {
+    window.addEventListener('hashchange', () => {
+      setTimeout(() => {
+        scanAllGfmLinks();
+      }, 300);
+    });
   }
 }

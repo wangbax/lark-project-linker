@@ -73,6 +73,44 @@
           transform: rotate(0.5turn);
         }
       }
+      
+      /* 折叠样式 */
+      .collapsible-header {
+        cursor: pointer !important;
+        user-select: none;
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+      }
+      
+      .collapsible-header:hover {
+        background-color: rgba(0, 0, 0, 0.02);
+      }
+      
+      .collapsible-arrow {
+        transition: transform 0.3s ease;
+        display: inline-block;
+        font-size: 1rem;
+        color: #6b7280;
+        margin-left: 8px;
+      }
+      
+      .collapsible-arrow.collapsed {
+        transform: rotate(-90deg);
+      }
+      
+      .collapsible-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.4s ease-in-out, opacity 0.4s ease-in-out;
+        opacity: 0;
+      }
+      
+      .collapsible-content.expanded {
+        max-height: 800px;
+        opacity: 1;
+        overflow: visible;
+      }
     </style>
   </head>
   <body>
@@ -84,7 +122,6 @@
         <form id="form" novalidate>
           <!-- 跳转配置 -->
           <div class="mb-8">
-            <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">跳转配置</h2>
             <div class="relative z-0 w-full mb-5">
               <div>
                 <input
@@ -115,11 +152,11 @@
                 <label
                   for="domain"
                   class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
-                  >GitLab 域名地址</label
+                  >GitLab/GitHub 域名地址</label
                 >
               </div>
               <p class="text-xs text-gray-500">
-                输入 GitLab 域名地址用于匹配激活插件，如 gitlab.com
+                输入 GitLab/GitHub 域名地址用于匹配激活插件，如 gitlab.com,github.com
                 (多个域名触发请用 , 作为分割)
               </p>
             </div>
@@ -138,15 +175,20 @@
                 >
               </div>
               <p class="text-xs text-gray-500">
-                输入识别的项目 ID 前缀，多个用逗号分隔，如 XX,M,F (默认为 m,f)
+                输入识别的项目 ID 前缀，多个用逗号分隔，如 TAP,XX,M,F (默认为 m,f，大小写不敏感)
               </p>
             </div>
           </div>
 
-          <!-- Sentry 配置 -->
+          <!-- 其他配置（Sentry）-->
           <div class="mb-8">
-            <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Sentry 配置</h2>
-            <div class="relative z-0 w-full mb-5">
+            <div class="collapsible-header border-b pb-2 mb-4" id="sentry-config-header">
+              <h2 class="text-lg font-semibold text-gray-700">其他配置</h2>
+              <span class="collapsible-arrow collapsed" id="sentry-config-arrow">▼</span>
+            </div>
+            <div class="collapsible-content" id="sentry-config-content">
+              <h3 class="text-sm font-medium text-gray-500 mb-3">Sentry 配置</h3>
+              <div class="relative z-0 w-full mb-5">
               <div>
                 <input
                   type="text"
@@ -182,6 +224,7 @@
               <p class="text-xs text-gray-500">
                 输入后端 API 地址，如 http://localhost:8080/api/feishu-sentry
               </p>
+              </div>
             </div>
           </div>
           <div
@@ -202,9 +245,11 @@
             提交
           </button>
           <div class="text-center mt-5" id="dev-inject">
-            <a
-              href="javascript:(function()%7Bvar s=document.createElement('script');s.src = 'http://localhost:3000/index.js';document.body.appendChild(s);%7D)()"
-              >dev inject script</a
+            <button
+              id="dev-inject-btn"
+              type="button"
+              class="text-blue-500 hover:text-blue-700 underline cursor-pointer bg-transparent border-0 p-0"
+              >dev inject script</button
             >
           </div>
         </form>

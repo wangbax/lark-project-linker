@@ -1,46 +1,49 @@
-# GitLab link to Lark
+# Lark Project Linker
 
-一个浏览器插件，用于提供 GitLab 项目中关联的飞书项目 ID 转换为飞书链接，并支持在 Sentry 中快速创建飞书 Issue。方便在 GitLab 项目中快速跳转查看飞书项目信息。
+一个浏览器插件，连接 GitLab/GitHub/Sentry 与飞书项目。自动将项目 ID（如 `#TAP-xxx`）转换为可点击的飞书链接，支持智能类型识别（Story/Issue）和一键创建飞书工单。让你的 DevOps 工作流更高效！
+
 [飞书参考资料](https://bytedance.larkoffice.com/wiki/XusFwYp2ZiqltkkSTaJc7eMdnYb)
 
 ## ✨ 主要功能
 
-### GitLab 集成
-- 🔗 **自动转换链接**：将 GitLab 中的 `#XX-xxx`、`#M-xxx`、`#F-xxx` 等格式自动转换为飞书链接
+### GitLab/GitHub 集成
+- 🔗 **自动转换链接**：将 GitLab/GitHub 中的 `#XX-xxx`、`#M-xxx`、`#F-xxx` 等格式自动转换为飞书链接
 - 🎯 **智能类型识别**：根据 commit 类型前缀自动判断是 Issue 还是 Story
   - `fix:`、`bugfix:`、`hotfix:` → Issue
   - `feat:`、`chore:`、`refactor:` → Story
-- 💡 **自定义 Tooltip**：显示 "Issue in Lark" 或 "Story in Lark"，替代 GitLab 原生的 "Issue in Jira"
+- 💡 **自定义 Tooltip**：显示 "Issue in Lark" 或 "Story in Lark"，替代原生的 tooltip
 - 🚀 **实时监听**：自动检测页面变化、标签切换、URL 变化
 - ⚡ **性能优化**：防抖机制、智能缓存、避免重复处理
 - 🔄 **类型统一**：确保同一 tid 的所有链接类型一致
+- 🌐 **多平台支持**：同时支持 GitLab 和 GitHub
 
-### Sentry 集成 🆕
+### Sentry 集成
 - 🎫 **快速创建工单**：在 Sentry Issue 页面一键创建飞书 Issue
 - 📝 **自动填充信息**：自动提取 Sentry Issue 标题、描述和 URL
 - 🔗 **智能按钮定位**：自动在 Issue Tracking 区域添加"创建飞书 Issue"按钮
 
-# 功能预览
+## 功能预览
 
-<img src="./docs/preview1.png" alt="preview1"  />
-<img src="./docs/preview2.png" alt="preview2"  />
+### GitLab/GitHub 链接转换
+<img src="./docs/preview-1.png" alt="GitLab MR 列表"  />
+<img src="./docs/preview-2.png" alt="GitHub Commits"  />
 
-# 安装
+## 安装
 
-## 商店安装
+### 商店安装
 
 [Chrome 应用商店](https://chromewebstore.google.com/detail/gitlab-link-to-lark/ocmkgfnifakgckfeofcoakiniljdjcfp)
 
-## 本地开发安装
+### 本地开发安装
 
-### 1. 克隆项目
+#### 1. 克隆项目
 
 ```bash
-git clone https://github.com/wangbax/gitlab-link-to-lark.git
-cd gitlab-link-to-lark
+git clone https://github.com/wangbax/lark-project-linker.git
+cd lark-project-linker
 ```
 
-### 2. 安装依赖
+#### 2. 安装依赖
 
 要求：Node.js >= 18
 
@@ -52,7 +55,7 @@ yarn install
 npm install
 ```
 
-### 3. 构建项目
+#### 3. 构建项目
 
 ```bash
 # 使用 yarn
@@ -64,9 +67,9 @@ npm run build
 
 构建完成后，产物会生成在 `dist` 目录中。
 
-### 4. 在浏览器中加载扩展
+#### 4. 在浏览器中加载扩展
 
-#### Chrome/Edge 浏览器
+##### Chrome/Edge 浏览器
 
 1. 打开浏览器，访问扩展管理页面：
    - Chrome: `chrome://extensions/`
@@ -80,27 +83,20 @@ npm run build
 
 <img src="./docs/install-2.png" alt="install"  />
 
-4. 选择项目的 `dist` 文件夹
+4. 选择项目的 `dist` 文件夹，扩展安装成功！
 
-<img src="./docs/install-3.png" alt="install"  />
+## 配置
 
-5. 扩展安装成功！
+安装完成后，点击扩展图标或在扩展管理页面点击「选项」进行配置
 
-### 5. 配置扩展
-
-安装完成后，点击扩展图标或在扩展管理页面点击「选项」进行配置：
-
-<img src="./docs/install-4.png" alt="install"  />
-
-需要配置以下信息：
-
-#### GitLab 配置
+### GitLab/GitHub 配置
 - **飞书命名空间**：你的飞书项目空间名称，支持多个，用逗号分隔（如：`pojq34,app1,app2`）
   - 插件会自动尝试每个命名空间，直到找到有效的那个
-- **GitLab 域名地址**：用于匹配激活插件（如：`gitlab.com`）
-- **项目 ID 前缀**：GitLab 中使用的项目 ID 前缀，多个用逗号分隔（如：`XX,M,F`）
+- **域名地址**：用于匹配激活插件（如：`gitlab.com,github.com`），支持多个域名，用逗号分隔
+- **项目 ID 前缀**：项目中使用的项目 ID 前缀，多个用逗号分隔（如：`XX,M,F,TAP`）
+  - 支持大小写，如 `TAP` 可匹配 `#TAP-6616715346`
 
-#### Sentry 配置（可选）🆕
+### Sentry 配置（可选）
 - **Sentry 域名地址**：你的 Sentry 域名（如：`sentry.com`），支持多个，用逗号分隔
 - **Sentry Issue 创建地址**：后端 API 地址（如：`http://localhost:8080/api/feishu-sentry`）
   - 用于创建飞书工单、查询现有工单、获取字段选项
@@ -114,35 +110,11 @@ npm run build
   - 后端会进一步验证并自动更正类型
 - 多个飞书命名空间会按配置顺序依次尝试，并缓存有效的结果
 
-## 智能类型识别
-
-插件会根据以下规则自动判断链接类型：
-
-### 1. 前缀优先
-- `M-xxx` → Story
-- `F-xxx` → Issue
-
-### 2. 上下文分析（针对其他前缀）
-扫描链接所在的 commit message、标题等上下文：
-
-**Issue 类型**（修复类）：
-- `fix: 修复登录问题 #XX-123456789`
-- `bugfix: 解决崩溃 #XX-123456789`
-- `hotfix: 紧急修复 #XX-123456789`
-
-**Story 类型**（功能/任务类）：
-- `feat: 新增用户中心 #XX-123456789`
-- `chore: 更新依赖 #XX-123456789`
-- `refactor: 代码重构 #XX-123456789`
-
-### 3. 后端验证
-插件会向飞书 API 请求实际类型，并自动更新所有相同 tid 的链接。
-
 ## 使用场景
 
-### GitLab 使用
+### GitLab/GitHub 使用
 
-#### Merge Request 标题
+#### Merge Request/Pull Request 标题
 ```
 fix: [AutoTest] Android 三方授权页面顶部无 title #XX-6581113659
                                               ↓
@@ -156,12 +128,31 @@ feat: 新增分享功能 #XX-123456789
         自动识别为 Story
 ```
 
+#### GitHub Commits 页面示例
+```
+feat: 修复 detekt 报错 # TAP-6616715346
+                     ↓
+          点击项目 ID 跳转到飞书
+          悬浮显示 Lark Tooltip
+```
+
+在 GitHub commits 页面（如 `https://github.com/taptap/TapSDK-Monorepo/commits/branch-name/`）：
+- 📍 commit 标题中的 `# TAP-6616715346` 会被识别
+- 🎯 点击项目 ID 部分直接跳转到飞书
+- 💡 悬浮显示飞书项目信息
+- 🔄 自动根据 commit 类型判断 Issue/Story
+
+**配置示例：**
+- 域名地址：`github.com`
+- 项目 ID 前缀：`TAP,XX,M,F`（根据实际项目配置）
+
 #### 页面自动刷新
 - ✅ 切换到 Commits 标签 → 自动扫描新链接
 - ✅ 切换到 Changes 标签 → 自动扫描新链接
 - ✅ 浏览器前进/后退 → 自动扫描新链接
+- ✅ GitHub Turbo 导航 → 自动扫描新链接
 
-### Sentry 使用 🆕
+### Sentry 使用
 
 #### 快速创建飞书工单
 
@@ -192,13 +183,15 @@ feat: 新增分享功能 #XX-123456789
 ├── dist/               # 构建产物
 ├── src/
 │   ├── js/            # JavaScript 源码
-│   │   ├── background.js  # 后台脚本
-│   │   ├── index.js       # GitLab 内容脚本
-│   │   ├── sentry.js      # Sentry 内容脚本 🆕
-│   │   ├── options.js     # 配置页面
-│   │   ├── utils.js       # 工具函数
-│   │   ├── store.js       # 配置存储
-│   │   └── ...
+│   │   ├── index.js           # 主入口，核心通用功能
+│   │   ├── gitlab-handler.js  # GitLab 平台处理器
+│   │   ├── github-handler.js  # GitHub 平台处理器
+│   │   ├── background.js      # 后台脚本
+│   │   ├── sentry.js          # Sentry 内容脚本
+│   │   ├── options.js         # 配置页面
+│   │   ├── store.js           # 配置存储与缓存管理
+│   │   ├── utils.js           # 工具函数
+│   │   └── event.js           # 事件常量
 │   ├── html/          # HTML 页面
 │   └── assets/        # 静态资源
 ├── gulpfile.js        # 构建配置
@@ -214,15 +207,131 @@ npm run watch
 
 修改代码后，需要在浏览器扩展管理页面点击「重新加载」按钮。
 
-# 使用
+### 代码架构
 
-配置完成后，访问 GitLab 项目页面，插件会自动将 `#XX-xxx`、`#M-xxx`、`#F-xxx` 等格式的项目 ID 转换为可点击的飞书链接。
+项目采用模块化架构，平台特定逻辑独立管理：
 
-# Preview
+```
+┌─────────────────────────────────────────────┐
+│              index.js (主入口)               │
+│  - 初始化配置和缓存                          │
+│  - 提供核心功能（Popover、链接生成等）      │
+│  - 监听通用事件                              │
+│  - 初始化平台处理器                          │
+└────────────┬────────────────────────────────┘
+             │ 使用
+             ↓
+┌────────────────────────┐
+│     store.js           │
+│  - 配置管理            │
+│  - 缓存管理            │
+└────────────────────────┘
 
-<img src="./docs/preview.png" alt="preview"  />
+             │ 创建处理器
+     ┌───────┴────────┐
+     ↓                ↓
+┌──────────────┐  ┌──────────────┐
+│gitlab-handler│  │github-handler│
+│   GitLab     │  │   GitHub     │
+│   平台处理   │  │   平台处理   │
+└──────────────┘  └──────────────┘
+```
+
+### 添加新平台支持
+
+添加新平台只需3步：
+
+#### 1. 创建处理器文件
+```javascript
+// src/js/bitbucket-handler.js
+export function createBitbucketHandler(context) {
+  function init() {
+    // 初始化逻辑
+  }
+  
+  return { init };
+}
+```
+
+#### 2. 导入处理器
+```javascript
+// src/js/index.js
+import { createBitbucketHandler } from "./bitbucket-handler";
+```
+
+#### 3. 初始化处理器
+```javascript
+// src/js/index.js
+const isBitbucket = window.location.host.includes('bitbucket');
+
+if (isBitbucket) {
+  platformHandler = createBitbucketHandler(context);
+  platformHandler.init();
+}
+```
+
+### 调试技巧
+
+#### 查看缓存
+```javascript
+// 在浏览器控制台中
+chrome.storage.local.get('LARK_PROJECT_TYPE_CACHE', (result) => {
+  console.log(result);
+});
+```
+
+#### 清除缓存
+```javascript
+// 在浏览器控制台中
+chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
+```
 
 ## 更新日志
+
+### v2.3.0 (2026-01-14)
+
+**新增功能：**
+- ✨ **GitHub 完整支持**：新增对 GitHub 平台的完整支持
+  - 支持 GitHub Commits 页面（如 `github.com/user/repo/commits/branch/`）
+  - 智能识别 commit 标题中的项目 ID（如 `# TAP-6616715346`）
+  - 点击项目 ID 部分直接跳转到飞书（无需嵌套链接）
+  - 支持 GitHub Pull Request 标题和评论
+  - 支持 GitHub Turbo/PJAX 导航自动刷新
+  - 自动识别 GitHub issue-link 和 hovercard 链接
+- 🌐 **多平台统一体验**：GitLab 和 GitHub 使用相同的智能类型识别和 Tooltip
+
+**代码重构：**
+- ♻️ **模块化架构**：将代码拆分为独立的平台处理器
+  - `gitlab-handler.js` - GitLab 平台特定处理
+  - `github-handler.js` - GitHub 平台特定处理
+  - `index.js` - 核心通用功能
+  - `store.js` - 配置存储与缓存管理
+- 📚 **架构优化**：
+  - 平台逻辑完全独立，互不影响
+  - 通过上下文对象共享状态和功能
+  - 添加新平台只需 3 步
+  - 整合 7 个文档文件为统一的 README.md
+- 🎯 **代码质量提升**：
+  - 清理所有 console.log 调试日志
+  - 统一函数命名规范
+  - 完善代码注释
+  - 移除所有内联脚本，符合 CSP 规范
+
+**Bug 修复：**
+- 🐛 修复 GitLab MR 列表页标题不生效问题
+- 🐛 修复飞书链接拼接错误
+- 🐛 修复 GitHub Issue 详情页标题不生效
+- 🐛 修复 GitHub Issue 描述和评论不可点击
+
+**UI 优化：**
+- 🎨 **配置页面优化**：
+  - Sentry 配置改为"其他配置"并默认折叠
+  - 添加展开/折叠动画效果
+  - 优化配置项布局，突出核心配置
+- 🎨 **交互优化**：
+  - GitHub commit 标题中的项目 ID 显示虚线下划线
+  - 悬浮显示飞书项目信息 Tooltip
+  - 点击项目 ID 阻止原 commit 链接跳转，直接打开飞书
 
 ### v2.2.0 (2025-01-08)
 
@@ -263,3 +372,16 @@ npm run watch
 - 🐛 修复同一 tid 多个链接类型不一致的问题
 - 🐛 屏蔽 GitLab 原生的 "Issue in Jira" tooltip
 - 🐛 修复 commit 列表中链接无法正确识别的问题
+
+## 贡献指南
+
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
+
+## 许可证
+
+MIT License
+

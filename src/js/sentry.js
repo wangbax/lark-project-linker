@@ -717,7 +717,6 @@ async function checkAndAddButton() {
 async function addFeishuButton(container, config) {
   // 检查是否已经添加过按钮（防止重复插入）
   if (container.querySelector('.lark-sentry-feishu-issue-item')) {
-    console.log('[Sentry] Feishu Issue 按钮已存在，跳过重复插入');
     return;
   }
   
@@ -730,7 +729,6 @@ async function addFeishuButton(container, config) {
   
   // 先查询 Issue 是否已存在
   const existingIssue = await queryFeishuIssue(config, sentryIssueId);
-  console.log('[Sentry] 查询到的工单:', existingIssue);
   
   // 创建与 Jira/GitLab Issue 完全相同结构的元素
   const issueItem = document.createElement('div');
@@ -879,7 +877,6 @@ async function extractIssueInfo() {
     // 匹配类似 XXX-ANDROID-6896 的格式
     if (/^[A-Z]+-[A-Z]+-[A-F0-9]+$/i.test(text)) {
       shortTitle = text;
-      console.log('[Sentry] 提取到短标题:', shortTitle);
     }
   }
   
@@ -900,8 +897,6 @@ async function extractIssueInfo() {
   
   if (jsonLink) {
     try {
-      console.log('[Sentry] 正在获取 JSON 数据:', jsonLink.href);
-      
       const response = await fetch(jsonLink.href, {
         credentials: 'include',
         headers: {
@@ -911,8 +906,7 @@ async function extractIssueInfo() {
       
       if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
         const jsonData = await response.json();
-        console.log('[Sentry] JSON 数据获取成功');
-        
+
         // 从 JSON 提取堆栈信息
         if (jsonData.exception && jsonData.exception.values) {
           const exceptions = jsonData.exception.values;
@@ -1248,8 +1242,7 @@ function extractSentryIssueId() {
 async function queryFeishuIssue(config, sentryIssueId) {
   try {
     const url = `${config.sentryIssueCreateUrl}/ticket?sentryIssueId=${sentryIssueId}`;
-    console.log('[Sentry] 查询 Feishu Issue:', url);
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
@@ -1259,8 +1252,7 @@ async function queryFeishuIssue(config, sentryIssueId) {
     
     if (response.ok) {
       const result = await response.json();
-      console.log('[Sentry] 查询结果:', result);
-      
+
       // 返回格式: { code: 0, success: true, data: { mapping: {...}, url: "..." } }
       if (result.success && result.data) {
         return result.data;
@@ -1268,7 +1260,6 @@ async function queryFeishuIssue(config, sentryIssueId) {
       return null;
     } else if (response.status === 404) {
       // Issue 不存在
-      console.log('[Sentry] Feishu Issue 不存在');
       return null;
     } else {
       console.warn('[Sentry] 查询 Feishu Issue 失败:', response.status);
@@ -1299,8 +1290,6 @@ function getCurrentUser() {
   try {
     // Content script 无法直接访问页面的 window.__initialData
     // 需要从 DOM 中的 <script> 标签提取数据
-    console.log('[Sentry] 正在从 DOM 中提取 __initialData...');
-    
     const scripts = document.querySelectorAll('script');
     let initialData = null;
     
@@ -1313,7 +1302,6 @@ function getCurrentUser() {
           const match = content.match(/window\.__initialData\s*=\s*(\{[\s\S]*?\});/);
           if (match && match[1]) {
             initialData = JSON.parse(match[1]);
-            console.log('[Sentry] 成功从 DOM 提取 __initialData:', initialData);
             break;
           }
         } catch (parseError) {
@@ -1330,8 +1318,7 @@ function getCurrentUser() {
     // 从 __initialData.user 中获取当前用户信息
     if (initialData.user) {
       const user = initialData.user;
-      console.log('[Sentry] 获取到当前用户信息:', user);
-      
+
       // 如果没有 name，使用邮箱 @ 前面的部分
       const displayName = user.name || (user.email ? user.email.split('@')[0] : user.email);
       
@@ -1342,13 +1329,11 @@ function getCurrentUser() {
         username: user.username,
         avatarUrl: user.avatarUrl
       };
-      console.log('[Sentry] 返回当前用户:', currentUser);
       return currentUser;
     } else if (initialData.userIdentity) {
       // 降级到 userIdentity
       const user = initialData.userIdentity;
-      console.log('[Sentry] 降级到 userIdentity:', user);
-      
+
       // 如果没有 name，使用邮箱 @ 前面的部分
       const displayName = user.name || (user.email ? user.email.split('@')[0] : user.email);
       
@@ -1359,7 +1344,6 @@ function getCurrentUser() {
         username: user.email,
         avatarUrl: null
       };
-      console.log('[Sentry] 返回当前用户 (userIdentity):', currentUser);
       return currentUser;
     } else {
       console.warn('[Sentry] __initialData 中没有 user 或 userIdentity 信息');
@@ -1386,9 +1370,7 @@ async function searchSentryMembers(query = '') {
     // 构建 Sentry API URL
     const baseUrl = `${window.location.protocol}//${window.location.host}`;
     const url = `${baseUrl}/api/0/organizations/${org}/members/${query ? `?query=${encodeURIComponent(query)}` : ''}`;
-    
-    console.log('[Sentry] 正在搜索成员:', url);
-    
+
     const response = await fetch(url, {
       credentials: 'include', // 携带认证信息
       headers: {
@@ -1400,10 +1382,9 @@ async function searchSentryMembers(query = '') {
       console.warn('[Sentry] 搜索成员失败:', response.status);
       return [];
     }
-    
+
     const members = await response.json();
-    console.log('[Sentry] 搜索到', members.length, '个成员');
-    
+
     // 转换为统一格式，如果没有 name，使用邮箱 @ 前面的部分
     return members.map(member => {
       const displayName = member.user.name || (member.user.email ? member.user.email.split('@')[0] : member.user.email);
@@ -1445,7 +1426,6 @@ async function populateFormOptions(config) {
     reporterIdInput.value = currentUser.id;
     assigneeInput.value = `${currentUser.name} (${currentUser.email})`;
     assigneeIdInput.value = currentUser.id;
-    console.log('[Sentry] 默认报告人和经办人设置为当前用户:', currentUser.name, currentUser.email);
   }
   
   // 加载后端字段选项（优先级、严重程度等动态字段）
@@ -1453,7 +1433,6 @@ async function populateFormOptions(config) {
     const result = await loadFieldOptions(config);
     if (result && result.data && result.data.options) {
       renderDynamicFields(result.data.options);
-      console.log('[Sentry] 动态字段加载成功:', result.data.options);
     }
   } catch (error) {
     console.warn('[Sentry] 动态字段加载失败:', error);
@@ -1714,8 +1693,6 @@ async function handleFormSubmit(form, config, issueInfo) {
   if (Object.keys(options).length > 0) {
     data.options = options;
   }
-  
-  console.log('[Sentry] 提交数据:', data);
 
   // 显示提交按钮加载状态
   const submitBtn = form.querySelector('[type="submit"]');
@@ -1725,8 +1702,7 @@ async function handleFormSubmit(form, config, issueInfo) {
 
   try {
     const url = `${config.sentryIssueCreateUrl}/ticket`;
-    console.log('[Sentry] 创建 Issue URL:', url);
-    
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1741,8 +1717,7 @@ async function handleFormSubmit(form, config, issueInfo) {
     }
 
     const result = await response.json();
-    console.log('[Sentry] 创建接口响应:', result);
-    
+
     // 检查业务状态
     if (!result.success) {
       const errorMsg = result.msg || result.message || '创建工单失败';
@@ -1775,8 +1750,6 @@ async function handleFormSubmit(form, config, issueInfo) {
  */
 function updateFeishuIssueDisplay(issueData) {
   try {
-    console.log('[Sentry] 更新 Feishu Issue 显示:', issueData);
-    
     // 查找页面上的 Feishu Issue 元素
     const feishuItem = document.querySelector('.lark-sentry-feishu-issue-item');
     if (!feishuItem) {
@@ -1808,10 +1781,7 @@ function updateFeishuIssueDisplay(issueData) {
     const addButton = feishuItem.querySelector('.lark-sentry-add-button');
     if (addButton) {
       addButton.remove();
-      console.log('[Sentry] 已移除加号按钮');
     }
-    
-    console.log('[Sentry] Feishu Issue 显示更新成功');
   } catch (error) {
     console.error('[Sentry] 更新 Feishu Issue 显示时出错:', error);
   }
