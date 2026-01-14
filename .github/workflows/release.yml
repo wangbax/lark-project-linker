@@ -1,0 +1,49 @@
+name: Build and Release Extension
+
+on:
+  release:
+    types: [created]
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # 使用 yarn 安装依赖（项目使用 yarn）
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # 构建扩展
+      - name: Build extension
+        run: yarn build
+
+      # 打包 dist 目录为 zip
+      - name: Package extension
+        run: |
+          cd dist
+          zip -r ../lark-project-linker-${{ github.ref_name }}.zip .
+          cd ..
+
+      # 上传构建产物
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-package
+          path: lark-project-linker-${{ github.ref_name }}.zip
+
+      # 发布到 Release
+      - name: Upload to Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: lark-project-linker-${{ github.ref_name }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
