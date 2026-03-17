@@ -26,12 +26,13 @@ function main() {
       loadingDom.style.display = "block";
       errMsgDom.style.display = "none";
       // 获取用户输入的内容
+      const larkDomain = formData.get("larkDomain");
       const app = formData.get("app");
       const domain = formData.get("domain");
       const prefixes = formData.get("prefixes");
       const sentryDomain = formData.get("sentryDomain");
       const sentryIssueCreateUrl = formData.get("sentryIssueCreateUrl");
-      const data = { app, domain, prefixes, sentryDomain, sentryIssueCreateUrl };
+      const data = { larkDomain, app, domain, prefixes, sentryDomain, sentryIssueCreateUrl };
       if (!data.app) {
         return toggleError("请输入飞书命名空间");
       }

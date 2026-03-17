@@ -20,7 +20,7 @@ import {
   saveCacheToStorage,
   cleanExpiredCache
 } from "./store";
-import { checkCondition, LARK_DOMAIN_HOST } from "./utils";
+import { checkCondition, getLarkDomainHost } from "./utils";
 import { MSG_EVENT } from "./event";
 import { createGitLabHandler } from "./gitlab-handler";
 import { createGitHubHandler } from "./github-handler";
@@ -191,9 +191,10 @@ async function main() {
   
   function getLarkProjectLink(projectId, type = "story") {
     const LarkConfig = getLarkConfigSync();
+    const domainHost = getLarkDomainHost(LarkConfig);
     if (type === "issue")
-      return `${LARK_DOMAIN_HOST}/${LarkConfig.app}/issue/detail/${projectId}`;
-    return `${LARK_DOMAIN_HOST}/${LarkConfig.app}/story/detail/${projectId}`;
+      return `${domainHost}/${LarkConfig.app}/issue/detail/${projectId}`;
+    return `${domainHost}/${LarkConfig.app}/story/detail/${projectId}`;
   }
 
   function fetchLarkProjectInfo(data) {
@@ -214,11 +215,13 @@ async function main() {
       data: cacheMap.get(tid)?.data || null,
     });
 
+    const LarkConfig = getLarkConfigSync();
     chrome.runtime.sendMessage({
       message: MSG_EVENT.GET_LARK_PROJECT_INFO,
       data: {
         app,
         tid,
+        larkDomain: getLarkDomainHost(LarkConfig),
       },
     });
   }

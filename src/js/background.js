@@ -1,5 +1,5 @@
 import { MSG_EVENT } from "./event";
-import { LARK_DOMAIN_HOST } from "./utils";
+import { DEFAULT_LARK_DOMAIN } from "./utils";
 
 main();
 
@@ -232,7 +232,8 @@ const typeCache = new Map();
 // App 缓存：记录每个 tid 对应的有效 app
 const appCache = new Map();
 
-async function getLarkProjectInfo({ tid, app }) {
+async function getLarkProjectInfo({ tid, app, larkDomain }) {
+  const domainHost = larkDomain || DEFAULT_LARK_DOMAIN;
   const [prefix, id] = tid.split("-");
   const prefixLower = prefix.toLowerCase();
 
@@ -247,7 +248,7 @@ async function getLarkProjectInfo({ tid, app }) {
       validApp = appCache.get(tid);
     } else {
       // 尝试找到有效的 app
-      validApp = await findValidApp(apps, id, tid, prefixLower);
+      validApp = await findValidApp(apps, id, tid, prefixLower, domainHost);
       if (validApp) {
         appCache.set(tid, validApp);
       } else {
@@ -268,11 +269,11 @@ async function getLarkProjectInfo({ tid, app }) {
     if (typeCache.has(tid)) {
       type = typeCache.get(tid);
     } else {
-      type = await detectProjectType(validApp, id, tid);
+      type = await detectProjectType(validApp, id, tid, domainHost);
     }
   }
 
-  let url = `${LARK_DOMAIN_HOST}/${validApp}/${type}/detail/${id}`;
+  let url = `${domainHost}/${validApp}/${type}/detail/${id}`;
   const res = await fetch(url);
   const text = await res.text();
   let info = { tid, actualType: type };
@@ -293,7 +294,7 @@ async function getLarkProjectInfo({ tid, app }) {
 }
 
 // 查找有效的 app：依次尝试每个 app，直到找到有效的
-async function findValidApp(apps, id, tid, prefixLower) {
+async function findValidApp(apps, id, tid, prefixLower, domainHost) {
   // 根据前缀猜测类型，优化尝试顺序
   let typesToTry = ['story', 'issue'];
   
@@ -307,7 +308,7 @@ async function findValidApp(apps, id, tid, prefixLower) {
   for (const app of apps) {
     for (const type of typesToTry) {
       try {
-        let url = `${LARK_DOMAIN_HOST}/${app}/${type}/detail/${id}`;
+        let url = `${domainHost}/${app}/${type}/detail/${id}`;
         const res = await fetch(url);
         const text = await res.text();
 
@@ -334,11 +335,11 @@ async function findValidApp(apps, id, tid, prefixLower) {
 }
 
 // 动态检测项目类型：先尝试 story，失败后尝试 issue
-async function detectProjectType(app, id, tid) {
+async function detectProjectType(app, id, tid, domainHost) {
 
   // 先尝试 story
   try {
-    let url = `${LARK_DOMAIN_HOST}/${app}/story/detail/${id}`;
+    let url = `${domainHost}/${app}/story/detail/${id}`;
     const res = await fetch(url);
     const text = await res.text();
 
@@ -359,7 +360,7 @@ async function detectProjectType(app, id, tid) {
 
   // 尝试 issue
   try {
-    let url = `${LARK_DOMAIN_HOST}/${app}/issue/detail/${id}`;
+    let url = `${domainHost}/${app}/issue/detail/${id}`;
     const res = await fetch(url);
     const text = await res.text();
 

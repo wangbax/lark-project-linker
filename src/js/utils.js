@@ -1,6 +1,15 @@
 import { getLarkConfig, getLarkConfigSync } from "./store";
 
-export const LARK_DOMAIN_HOST = "https://project.feishu.cn";
+export const LARK_DOMAIN_OPTIONS = {
+  feishu: "https://project.feishu.cn",
+  larksuite: "https://project.larksuite.com",
+};
+
+export const DEFAULT_LARK_DOMAIN = LARK_DOMAIN_OPTIONS.larksuite;
+
+export function getLarkDomainHost(config) {
+  return config?.larkDomain || DEFAULT_LARK_DOMAIN;
+}
 
 // 检查是否满足条件（GitLab）
 export async function checkCondition() {

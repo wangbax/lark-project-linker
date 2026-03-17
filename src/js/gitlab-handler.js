@@ -230,12 +230,10 @@ export function createGitLabHandler(context) {
    * 替换 merge request title
    */
   function replaceMergeRequestTitle() {
-    const dom_merge_request_details = document.querySelector(
-      ".merge-request-details"
-    );
-    if (!dom_merge_request_details) return;
     const dom_merge_request_title =
-      dom_merge_request_details.querySelector(".title");
+      document.querySelector('h1[data-testid="title-content"]') ||
+      document.querySelector('.detail-page-header .title') ||
+      document.querySelector('.merge-request-details .title');
     if (!dom_merge_request_title) return;
     if (nodeMap.has(dom_merge_request_title)) return;
 
