@@ -1,6 +1,6 @@
 {
   "name": "lark-linker",
-  "description": "Link GitLab/GitHub commits, MRs and issues to Lark Project (Feishu/飞书). Auto-convert project IDs to clickable links. Supports story, issue tracking and Sentry integration.",
+  "description": "Auto-convert project IDs in GitLab/GitHub to clickable Lark (Feishu/飞书) links. Supports story, issue and Sentry.",
   "version": "2.3.0",
   "scripts": {
     "build": "NODE_ENV=production gulp build",
