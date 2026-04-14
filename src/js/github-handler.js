@@ -304,6 +304,11 @@ export function createGitHubHandler(context) {
       const prTitles = document.querySelectorAll(selector);
       
       prTitles.forEach(prTitle => {
+        // GitHub 新版 commit history 也复用了 Title-module 容器，避免误按 PR/Issue 标题处理
+        if (isCommitRowElement(prTitle)) {
+          return;
+        }
+
         // 检查是否是 PR/Issue 列表中的导航链接
         if (prTitle.tagName === 'A') {
           const isNavigationLink = 
@@ -390,6 +395,169 @@ export function createGitHubHandler(context) {
         nodeMap.set(comment, true);
       }
     });
+  }
+
+  function isCommitRowElement(element) {
+    return Boolean(
+      element.closest(
+        '[data-testid="commit-row-item"], [data-commit-link], [class*="CommitRow-module__ListItem"], .commits-list-item, .commit-group'
+      )
+    );
+  }
+
+  function getGitHubPrefixConfig() {
+    const LarkConfig = getLarkConfigSync();
+    if (!LarkConfig) {
+      return { LarkConfig: null, prefixList: [] };
+    }
+
+    let prefixList = LarkConfig.prefixes;
+    if (typeof prefixList === 'string') {
+      prefixList = prefixList.split(',').map(p => p.trim()).filter(p => p);
+    }
+
+    return {
+      LarkConfig,
+      prefixList: (prefixList || []).map(prefix => prefix.toLowerCase())
+    };
+  }
+
+  function inferTidType(tid, contextText = '') {
+    let type = tidTypeMap.get(tid);
+    if (type) {
+      return type;
+    }
+
+    const prefix = tid.split('-')[0].toLowerCase();
+    const lowerContext = contextText.toLowerCase();
+
+    type = 'story';
+    if (prefix === 'f') {
+      type = 'issue';
+    } else if (prefix !== 'm') {
+      if (/^(fix|bugfix|hotfix|bug)[\s:]/i.test(lowerContext)) {
+        type = 'issue';
+      } else if (/^(feat|feature|chore|refactor|perf|style|test|docs|build|ci)[\s:]/i.test(lowerContext)) {
+        type = 'story';
+      }
+    }
+
+    tidTypeMap.set(tid, type);
+    return type;
+  }
+
+  function bindGitHubLarkSpan(span) {
+    span.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const tid = span.dataset.tid;
+      const projectId = tid.split('-')[1];
+      const larkType = tidTypeMap.get(tid) || span.dataset.larkType;
+      const url = getLarkProjectLink(projectId, larkType);
+      window.open(url, '_blank');
+    });
+
+    span.addEventListener('mouseenter', enterHandler);
+    span.addEventListener('mouseleave', leaveHandler);
+  }
+
+  function createGitHubLarkSpan(tid, type, url) {
+    const span = document.createElement('span');
+    span.className = 'github-lark-id';
+    span.dataset.tid = tid;
+    span.dataset.larkType = type;
+    span.dataset.larkUrl = url;
+    span.style.color = '#1890ff';
+    span.style.cursor = 'pointer';
+    span.style.fontWeight = '500';
+    span.style.textDecoration = 'none';
+    span.textContent = `#${tid}`;
+    bindGitHubLarkSpan(span);
+    return span;
+  }
+
+  function replaceTaskIdsInTextNodes(root, contextText) {
+    const { LarkConfig, prefixList } = getGitHubPrefixConfig();
+    if (!LarkConfig || prefixList.length === 0) {
+      return false;
+    }
+
+    const reg = new RegExp(`#\\s*(${prefixList.join("|")})-\\d{7,}`, "gi");
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode(node) {
+          if (!node.parentElement) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          if (!node.textContent || !reg.test(node.textContent)) {
+            reg.lastIndex = 0;
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          reg.lastIndex = 0;
+
+          if (node.parentElement.closest('.github-lark-id, .lark-project-link, textarea, [contenteditable="true"], script, style')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      }
+    );
+
+    const textNodes = [];
+    while (walker.nextNode()) {
+      textNodes.push(walker.currentNode);
+    }
+
+    let hasReplaced = false;
+
+    textNodes.forEach(textNode => {
+      const text = textNode.textContent || '';
+      const matches = Array.from(text.matchAll(reg));
+      reg.lastIndex = 0;
+
+      if (matches.length === 0 || !textNode.parentNode) {
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      let lastIndex = 0;
+
+      matches.forEach(match => {
+        const startIndex = match.index ?? 0;
+        if (startIndex > lastIndex) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex, startIndex)));
+        }
+
+        const tid = match[0].replace(/^#\s*/, '');
+        const projectId = tid.split('-')[1];
+        const type = inferTidType(tid, contextText);
+        const url = getLarkProjectLink(projectId, type);
+
+        fragment.appendChild(createGitHubLarkSpan(tid, type, url));
+
+        fetchLarkProjectInfo({
+          tid,
+          app: LarkConfig.app,
+        });
+
+        lastIndex = startIndex + match[0].length;
+        hasReplaced = true;
+      });
+
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+
+      textNode.parentNode.replaceChild(fragment, textNode);
+    });
+
+    return hasReplaced;
   }
 
   /**
@@ -513,80 +681,12 @@ export function createGitHubHandler(context) {
     
     // 对于非 <a> 标签，使用内联 span 方式替换项目 ID
     if (prTitle.tagName !== 'A') {
-      const LarkConfig = getLarkConfigSync();
-      if (LarkConfig) {
-        let prefixList = LarkConfig.prefixes;
-        if (typeof prefixList === 'string') {
-          prefixList = prefixList.split(',').map(p => p.trim()).filter(p => p);
-        }
-        
-        if (prefixList && prefixList.length > 0) {
-          const originalText = prTitle.textContent;
-          const reg = new RegExp(`#\\s*(${prefixList.join("|")})-\\d{7,}`, "gi");
-          const matches = originalText.match(reg);
-          
-          if (matches && matches.length > 0) {
-            let newHTML = prTitle.innerHTML;
-            
-            matches.forEach(match => {
-              const tid = match.replace(/^#\s*/, '');
-              const projectId = tid.split("-")[1];
-              const prefix = tid.split("-")[0].toLowerCase();
-              
-              // 检查缓存的类型
-              let type = tidTypeMap.get(tid);
-              if (!type) {
-                // 根据前缀或上下文判断初始类型
-                type = "story";
-                if (prefix === "f") {
-                  type = "issue";
-                } else if (prefix === "m") {
-                  type = "story";
-                }
-                tidTypeMap.set(tid, type);
-              }
-              
-              const url = getLarkProjectLink(projectId, type);
-              
-              // 创建内嵌飞书链接 span
-              const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${type}" data-lark-url="${url}" style="color: #1890ff; cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
-              
-              // 替换所有匹配的项目 ID
-              newHTML = newHTML.replace(new RegExp(match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), larkSpan);
-              
-              // 获取项目信息
-              fetchLarkProjectInfo({
-                tid: tid,
-                app: LarkConfig.app,
-              });
-            });
-            
-            // 更新 innerHTML
-            prTitle.innerHTML = newHTML;
-            
-            // 为所有 span.github-lark-id 绑定点击和悬浮事件
-            const larkSpans = prTitle.querySelectorAll('.github-lark-id');
-            larkSpans.forEach(span => {
-              span.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const tid = span.dataset.tid;
-                const projectId = tid.split("-")[1];
-                const larkType = tidTypeMap.get(tid) || span.dataset.larkType;
-                const url = getLarkProjectLink(projectId, larkType);
-                window.open(url, '_blank');
-              });
-              
-              span.addEventListener('mouseenter', enterHandler);
-              span.addEventListener('mouseleave', leaveHandler);
-            });
-            
-            // 使用 MutationObserver 监控 React 元素的重新渲染
-            setupReactObserver(prTitle, matches);
-            
-            hasReplaced = true;
-          }
-        }
+      const originalText = prTitle.textContent || '';
+      hasReplaced = replaceTaskIdsInTextNodes(prTitle, originalText);
+
+      if (hasReplaced) {
+        // 使用 MutationObserver 监控 React 元素的重新渲染
+        setupReactObserver(prTitle, () => replaceTaskIdsInTextNodes(prTitle, prTitle.textContent || originalText));
       }
     } else {
       // 对于 <a> 标签，使用原有逻辑
@@ -614,7 +714,7 @@ export function createGitHubHandler(context) {
   /**
    * 设置 React 元素观察器
    */
-  function setupReactObserver(prTitle, matches) {
+  function setupReactObserver(prTitle, reapplyHandler) {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'childList' || mutation.type === 'characterData') {
@@ -626,34 +726,7 @@ export function createGitHubHandler(context) {
             // 临时断开观察，避免无限循环
             observer.disconnect();
             
-            // 重新应用修改
-            let reHTML = prTitle.innerHTML;
-            matches.forEach(match => {
-              const tid = match.replace(/^#\s*/, '');
-              const projectId = tid.split("-")[1];
-              const type = tidTypeMap.get(tid) || "story";
-              const url = getLarkProjectLink(projectId, type);
-              const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${type}" data-lark-url="${url}" style="color: #1890ff; cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
-              reHTML = reHTML.replace(new RegExp(match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), larkSpan);
-            });
-            
-            prTitle.innerHTML = reHTML;
-            
-            // 重新绑定事件
-            const newSpans = prTitle.querySelectorAll('.github-lark-id');
-            newSpans.forEach(span => {
-              span.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const tid = span.dataset.tid;
-                const projectId = tid.split("-")[1];
-                const larkType = tidTypeMap.get(tid) || span.dataset.larkType;
-                const url = getLarkProjectLink(projectId, larkType);
-                window.open(url, '_blank');
-              });
-              span.addEventListener('mouseenter', enterHandler);
-              span.addEventListener('mouseleave', leaveHandler);
-            });
+            reapplyHandler();
             
             // 重新连接观察
             observer.observe(prTitle, {

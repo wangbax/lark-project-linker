@@ -288,6 +288,16 @@ chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
 
 ## 更新日志
 
+### v2.3.1 (2026-04-14)
+
+**Bug 修复：**
+- 🐛 适配 GitHub 新版 commit history 列表 DOM 结构，恢复提交标题中的飞书项目链接替换
+- 🐛 避免在替换 `#TAP-...` 时误污染 commit 链接的 `title` 等属性，防止标题节点 HTML 被破坏
+
+**兼容性优化：**
+- 🔧 调整 GitHub 标题扫描逻辑，跳过 commit row 容器，避免被误识别为 PR/Issue 标题
+- 🔧 非链接标题改为基于文本节点替换项目 ID，降低后续 GitHub UI 变更带来的脆弱性
+
 ### v2.3.0 (2026-01-14)
 
 **新增功能：**
@@ -384,4 +394,3 @@ chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
 ## 许可证
 
 MIT License
-
