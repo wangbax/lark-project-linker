@@ -1,7 +1,7 @@
 {
   "name": "lark-project-linker",
   "description": "一个浏览器插件，连接 GitLab/GitHub/Sentry 与飞书项目。自动转换项目 ID 为可点击链接，支持智能类型识别和一键创建飞书工单 --- powered by wangbax",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "scripts": {
     "build": "NODE_ENV=production gulp build",
     "dev": "NODE_ENV=development gulp dev"
