@@ -298,7 +298,7 @@ chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
 - ✨ 支持基于 GitHub 用户目录仓库的 `GitHub / Name / Email` 映射，在 GitHub 原生用户 hovercard 中补充邮箱前缀显示
 
 **Bug 修复：**
-- 🐛 修复部分登录名包含邮箱前缀时被误判为“已显示”的问题，确保如 `luokun-png`、`uffy` 等场景统一追加显示
+- 🐛 修复部分登录名与邮箱前缀存在包含或相同关系时被误判为“已显示”的问题，确保相关 hovercard 场景统一追加显示
 - 🐛 调整 hovercard DOM 监听逻辑，兼容 GitHub 异步插入 `.Popover-message` 内容的时机
 
 **文档更新：**
