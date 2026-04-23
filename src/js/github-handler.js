@@ -18,20 +18,28 @@ export function createGitHubHandler(context) {
     leaveHandler,
     removeGitLabTooltipAttributes
   } = context;
+  const githubUserAliasState = {
+    sourceUrl: "",
+    promise: null,
+    map: new Map(),
+  };
+  let githubUserHovercardObserver = null;
 
   /**
    * 初始化 GitHub 处理器
    */
   function init() {
-    
     // 隐藏 GitHub 的默认 tooltip
     hideGitHubTooltips();
-    
+
     // 初始化页面监听
     initPageListener();
-    
+
     // 监听 GitHub 特定的导航事件
     setupNavigationListeners();
+
+    // 初始化 GitHub 用户别名展示
+    replaceGitHubUserAliases();
   }
 
   /**
@@ -45,6 +53,11 @@ export function createGitHubHandler(context) {
       .lark-project-link[aria-label],
       .lark-project-link tool-tip {
         pointer-events: none;
+      }
+      .github-user-real-name {
+        color: var(--fgColor-muted, #656d76);
+        font-weight: 400;
+        margin-left: 4px;
       }
     `;
     document.head.appendChild(style);
@@ -62,6 +75,7 @@ export function createGitHubHandler(context) {
       const ro = new ResizeObserver(function () {
         replaceGitHubCommits();
         replaceGitHubPullRequests();
+        replaceGitHubUserAliases();
       });
       ro.observe(dom_github_container);
     }
@@ -75,6 +89,7 @@ export function createGitHubHandler(context) {
     const scanGitHubContent = () => {
       replaceGitHubCommits();
       replaceGitHubPullRequests();
+      replaceGitHubUserAliases();
     };
 
     // GitHub 使用 turbo 进行页面导航
@@ -839,9 +854,252 @@ export function createGitHubHandler(context) {
     return hasReplaced;
   }
 
+  function normalizeGitHubDirectoryUrl(rawUrl) {
+    if (!rawUrl) return "";
+
+    try {
+      const url = new URL(rawUrl.trim());
+      if (url.hostname !== "github.com") return "";
+
+      const pathSegments = url.pathname.split("/").filter(Boolean);
+      if (pathSegments.length < 2) return "";
+
+      return `${url.origin}/${pathSegments[0]}/${pathSegments[1]}`;
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function normalizeTableHeader(text) {
+    return text.replace(/\s+/g, "").trim().toLowerCase();
+  }
+
+  function extractGitHubLoginFromLink(link) {
+    if (!link) return "";
+
+    const href = link.getAttribute("href") || "";
+    const rawText = (link.textContent || "").trim();
+    const textLogin = rawText.replace(/^@/, "").trim();
+
+    try {
+      const url = new URL(href, window.location.origin);
+      if (url.hostname !== "github.com") {
+        return textLogin;
+      }
+
+      const pathSegments = url.pathname.split("/").filter(Boolean);
+      if (pathSegments.length === 1) {
+        return pathSegments[0];
+      }
+    } catch (error) {
+      return textLogin;
+    }
+
+    return textLogin;
+  }
+
+  function extractEmailPrefix(text) {
+    const emailMatch = text.match(/([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})/i);
+    if (!emailMatch) return "";
+
+    return emailMatch[1].split("@")[0];
+  }
+
+  function buildGitHubUserDisplayName(userInfo) {
+    if (!userInfo) return "";
+
+    return (userInfo.emailPrefix || "").trim();
+  }
+
+  function parseGitHubUserAliasMap(htmlText) {
+    const aliasMap = new Map();
+    const doc = new DOMParser().parseFromString(htmlText, "text/html");
+    const tables = Array.from(doc.querySelectorAll(".markdown-body table"));
+
+    tables.forEach(table => {
+      const headerCells = Array.from(table.querySelectorAll("tr:first-child th"));
+      if (headerCells.length === 0) return;
+
+      const headers = headerCells.map(cell => normalizeTableHeader(cell.textContent || ""));
+      const githubIndex = headers.indexOf("github");
+      const nameIndex = headers.indexOf("name");
+      const emailIndex = headers.indexOf("email");
+
+      if (githubIndex === -1 || emailIndex === -1) return;
+
+      const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+      rows.forEach(row => {
+        const cells = Array.from(row.querySelectorAll("td"));
+        if (cells.length <= Math.max(githubIndex, emailIndex, nameIndex)) return;
+
+        const githubLink = cells[githubIndex].querySelector("a[href]");
+        const login = extractGitHubLoginFromLink(githubLink || cells[githubIndex]);
+        const emailPrefix = extractEmailPrefix(cells[emailIndex].textContent || "");
+
+        if (login && emailPrefix) {
+          aliasMap.set(login, {
+            emailPrefix,
+          });
+        }
+      });
+    });
+
+    return aliasMap;
+  }
+
+  async function ensureGitHubUserAliasMap() {
+    const LarkConfig = getLarkConfigSync();
+    const sourceUrl = normalizeGitHubDirectoryUrl(LarkConfig?.githubUserDirectoryUrl);
+
+    if (!sourceUrl) {
+      githubUserAliasState.sourceUrl = "";
+      githubUserAliasState.promise = null;
+      githubUserAliasState.map = new Map();
+      return githubUserAliasState.map;
+    }
+
+    if (githubUserAliasState.promise && githubUserAliasState.sourceUrl === sourceUrl) {
+      return githubUserAliasState.promise;
+    }
+
+    githubUserAliasState.sourceUrl = sourceUrl;
+    githubUserAliasState.promise = fetch(sourceUrl, {
+      credentials: "include",
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`GitHub user directory request failed: ${response.status}`);
+        }
+        return response.text();
+      })
+      .then(htmlText => {
+        githubUserAliasState.map = parseGitHubUserAliasMap(htmlText);
+        return githubUserAliasState.map;
+      })
+      .catch(error => {
+        console.error("[GitHub Handler] 加载 GitHub 用户映射失败:", error);
+        githubUserAliasState.map = new Map();
+        return githubUserAliasState.map;
+      });
+
+    return githubUserAliasState.promise;
+  }
+
+  function extractLoginFromHovercard(container) {
+    if (!container) return "";
+
+    const hydroNode = container.querySelector("[data-hydro-view]");
+    const hydroPayload = hydroNode?.getAttribute("data-hydro-view");
+    if (hydroPayload) {
+      try {
+        const parsed = JSON.parse(hydroPayload);
+        const loginFromPayload = parsed?.payload?.card_user_login;
+        if (loginFromPayload) {
+          return loginFromPayload;
+        }
+      } catch (error) {
+        // ignore malformed payloads and fall through to DOM-based extraction
+      }
+    }
+
+    const loginLink = container.querySelector('section[aria-label="User login and name"] a[href]');
+    if (loginLink) {
+      return extractGitHubLoginFromLink(loginLink);
+    }
+
+    return "";
+  }
+
+  function appendDisplayNameToHovercard(container, displayName) {
+    if (!container || !displayName) return false;
+
+    const nameSection = container.querySelector('section[aria-label="User login and name"]');
+    if (!nameSection) return false;
+
+    const loginLink = nameSection.querySelector('a[href]');
+    if (!loginLink) return false;
+
+    const existing = nameSection.querySelector(".github-user-real-name");
+    if (existing) {
+      existing.textContent = `(${displayName})`;
+      return true;
+    }
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "github-user-real-name";
+    nameSpan.textContent = `(${displayName})`;
+    loginLink.insertAdjacentElement("afterend", nameSpan);
+
+    return true;
+  }
+
+  function collectGitHubHovercardContainers(root = document.body) {
+    if (!root || root.nodeType !== Node.ELEMENT_NODE) return [];
+
+    const containerSet = new Set();
+    if (root.matches?.(".Popover-message")) {
+      containerSet.add(root);
+    }
+
+    const ancestorPopover = root.closest?.(".Popover-message");
+    if (ancestorPopover) {
+      containerSet.add(ancestorPopover);
+    }
+
+    root.querySelectorAll(".Popover-message").forEach(container => {
+      containerSet.add(container);
+    });
+
+    return Array.from(containerSet);
+  }
+
+  function enhanceGitHubHovercard(container) {
+    if (!container) return;
+
+    const login = extractLoginFromHovercard(container);
+    if (!login) return;
+
+    const userInfo = githubUserAliasState.map.get(login);
+    const displayName = buildGitHubUserDisplayName(userInfo);
+    if (!displayName) return;
+
+    appendDisplayNameToHovercard(container, displayName);
+  }
+
+  function ensureGitHubHovercardObserver() {
+    if (githubUserHovercardObserver) {
+      return;
+    }
+
+    githubUserHovercardObserver = new MutationObserver((mutations) => {
+      mutations.forEach(mutation => {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+          const hovercards = collectGitHubHovercardContainers(node);
+          hovercards.forEach(enhanceGitHubHovercard);
+        });
+      });
+    });
+
+    githubUserHovercardObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+    });
+  }
+
+  async function replaceGitHubUserAliases() {
+    const aliasMap = await ensureGitHubUserAliasMap();
+    if (!aliasMap || aliasMap.size === 0) return;
+
+    ensureGitHubHovercardObserver();
+    collectGitHubHovercardContainers(document.body).forEach(enhanceGitHubHovercard);
+  }
+
   return {
     init,
     replaceGitHubCommits,
-    replaceGitHubPullRequests
+    replaceGitHubPullRequests,
+    replaceGitHubUserAliases
   };
 }

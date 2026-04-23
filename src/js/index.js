@@ -613,6 +613,7 @@ async function main() {
   if (platformHandler && isGitHub) {
     platformHandler.replaceGitHubCommits();
     platformHandler.replaceGitHubPullRequests();
+    platformHandler.replaceGitHubUserAliases?.();
   }
 
   // 防抖扫描
@@ -626,6 +627,7 @@ async function main() {
       if (platformHandler && isGitHub) {
         platformHandler.replaceGitHubCommits();
         platformHandler.replaceGitHubPullRequests();
+        platformHandler.replaceGitHubUserAliases?.();
       }
     }, 100);
   }
@@ -660,6 +662,7 @@ async function main() {
         if (platformHandler && isGitHub) {
           platformHandler.replaceGitHubCommits();
           platformHandler.replaceGitHubPullRequests();
+          platformHandler.replaceGitHubUserAliases?.();
         }
       }, 500);
     }
@@ -680,6 +683,7 @@ async function main() {
       if (platformHandler && isGitHub) {
         platformHandler.replaceGitHubCommits();
         platformHandler.replaceGitHubPullRequests();
+        platformHandler.replaceGitHubUserAliases?.();
       }
     }, 500);
   });

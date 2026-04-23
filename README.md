@@ -12,6 +12,7 @@
   - `fix:`、`bugfix:`、`hotfix:` → Issue
   - `feat:`、`chore:`、`refactor:` → Story
 - 💡 **自定义 Tooltip**：显示 "Issue in Lark" 或 "Story in Lark"，替代原生的 tooltip
+- 👤 **GitHub 用户 hovercard 补邮箱前缀**：可基于 GitHub 目录仓库 README 的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 里给用户名补上邮箱前缀
 - 🚀 **实时监听**：自动检测页面变化、标签切换、URL 变化
 - ⚡ **性能优化**：防抖机制、智能缓存、避免重复处理
 - 🔄 **类型统一**：确保同一 tid 的所有链接类型一致
@@ -95,6 +96,8 @@ npm run build
 - **域名地址**：用于匹配激活插件（如：`gitlab.com,github.com`），支持多个域名，用逗号分隔
 - **项目 ID 前缀**：项目中使用的项目 ID 前缀，多个用逗号分隔（如：`XX,M,F,XX`）
   - 支持大小写，如 `XX` 可匹配 `#XX-6616715346`
+- **GitHub 用户映射目录**：可选，填写 GitHub 目录仓库地址（如：`https://github.com/[org]/org`）
+  - 插件会读取 README 中 `GitHub / Name / Email` 表格，并在 GitHub 原生 hovercard 的用户名后追加如 `([email_prefix])` 的显示
 
 ### Sentry 配置（可选）
 - **Sentry 域名地址**：你的 Sentry 域名（如：`sentry.com`），支持多个，用逗号分隔
@@ -141,6 +144,7 @@ feat: 修复 detekt 报错 # XX-6616715346
 - 🎯 点击项目 ID 部分直接跳转到飞书
 - 💡 悬浮显示飞书项目信息
 - 🔄 自动根据 commit 类型判断 Issue/Story
+- 👤 配置 GitHub 用户映射目录后，hover 用户名时会在 GitHub 原生 hovercard 中显示邮箱前缀
 
 **配置示例：**
 - 域名地址：`github.com`
@@ -287,6 +291,19 @@ chrome.storage.local.remove('LARK_PROJECT_TYPE_CACHE');
 ```
 
 ## 更新日志
+
+### v2.3.2 (2026-04-23)
+
+**新增功能：**
+- ✨ 支持基于 GitHub 用户目录仓库的 `GitHub / Name / Email` 映射，在 GitHub 原生用户 hovercard 中补充邮箱前缀显示
+
+**Bug 修复：**
+- 🐛 修复部分登录名包含邮箱前缀时被误判为“已显示”的问题，确保如 `luokun-png`、`uffy` 等场景统一追加显示
+- 🐛 调整 hovercard DOM 监听逻辑，兼容 GitHub 异步插入 `.Popover-message` 内容的时机
+
+**文档更新：**
+- 📝 配置页与 README 新增 GitHub 用户映射目录说明
+- 📝 将示例中的组织/邮箱说明泛化为 `[org]`、`[email_prefix]` 占位，避免写死特定组织描述
 
 ### v2.3.1 (2026-04-14)
 

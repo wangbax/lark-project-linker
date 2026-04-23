@@ -29,9 +29,17 @@ function main() {
       const app = formData.get("app");
       const domain = formData.get("domain");
       const prefixes = formData.get("prefixes");
+      const githubUserDirectoryUrl = (formData.get("githubUserDirectoryUrl") || "").trim();
       const sentryDomain = formData.get("sentryDomain");
       const sentryIssueCreateUrl = formData.get("sentryIssueCreateUrl");
-      const data = { app, domain, prefixes, sentryDomain, sentryIssueCreateUrl };
+      const data = {
+        app,
+        domain,
+        prefixes,
+        githubUserDirectoryUrl,
+        sentryDomain,
+        sentryIssueCreateUrl,
+      };
       if (!data.app) {
         return toggleError("请输入飞书命名空间");
       }
@@ -43,6 +51,17 @@ function main() {
       }
       if (prefixes && !/^[a-zA-Z0-9]+(,[a-zA-Z0-9]+)*$/.test(prefixes.trim())) {
         return toggleError("项目 ID 前缀格式不正确，请使用字母、数字，多个前缀用逗号分隔");
+      }
+      if (githubUserDirectoryUrl) {
+        try {
+          const url = new URL(githubUserDirectoryUrl);
+          const pathSegments = url.pathname.split("/").filter(Boolean);
+          if (url.protocol !== "https:" || url.hostname !== "github.com" || pathSegments.length < 2) {
+            throw new Error("invalid github directory url");
+          }
+        } catch (error) {
+          return toggleError("GitHub 用户映射目录格式不正确，请输入 https://github.com/<owner>/<repo>");
+        }
       }
       toggleError();
       await setLarkConfig(data);

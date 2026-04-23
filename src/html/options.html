@@ -178,6 +178,24 @@
                 输入识别的项目 ID 前缀，多个用逗号分隔，如 XX,M,F (默认为 m,f，大小写不敏感)
               </p>
             </div>
+            <div class="relative z-0 w-full mb-5">
+              <div>
+                <input
+                  type="text"
+                  name="githubUserDirectoryUrl"
+                  placeholder=" "
+                  class="pt-3 pb-2 block w-full px-0 mt-0 bg-transparent border-0 border-b-2 appearance-none focus:outline-none focus:ring-0 focus:border-black border-gray-200"
+                />
+                <label
+                  for="githubUserDirectoryUrl"
+                  class="absolute duration-300 top-3 -z-1 origin-0 text-gray-500"
+                  >GitHub 用户映射目录</label
+                >
+              </div>
+              <p class="text-xs text-gray-500">
+                输入 GitHub 目录仓库地址，如 https://github.com/[org]/org 。插件会读取 README 中的 GitHub/Name/Email 表，并在 GitHub 原生 hovercard 的用户名后追加邮箱前缀。
+              </p>
+            </div>
           </div>
 
           <!-- 其他配置（Sentry）-->
