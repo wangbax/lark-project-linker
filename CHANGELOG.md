@@ -1,5 +1,18 @@
 # 更新日志
 
+## v2.3.3 (2026-04-24)
+
+**体验优化：**
+- ✨ GitHub 用户 hovercard 改为优先展示目录映射表中的 `Name` 中文名，`Name` 为空时再回退邮箱前缀
+- ✨ 中文名展示位置调整到 GitHub 原生 profile name 后方，保留 GitHub 原生名称信息
+
+**Bug 修复：**
+- 🐛 收窄 GitHub hovercard 监听范围，避免 repo overview 等大 DOM 区域更新时 hover 卡顿
+- 🐛 跳过插件自身插入的中文名节点，避免重复触发 hovercard 处理
+
+**文档更新：**
+- 📝 README 与配置页同步更新 GitHub 用户映射目录的中文名展示说明
+
 ## v2.3.2 (2026-04-23)
 
 **新增功能：**

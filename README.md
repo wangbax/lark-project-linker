@@ -12,7 +12,7 @@
   - `fix:`、`bugfix:`、`hotfix:` → Issue
   - `feat:`、`chore:`、`refactor:` → Story
 - 💡 **自定义 Tooltip**：显示 "Issue in Lark" 或 "Story in Lark"，替代原生的 tooltip
-- 👤 **GitHub 用户 hovercard 补邮箱前缀**：可基于 GitHub 目录仓库 README 的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 里给用户名补上邮箱前缀
+- 👤 **GitHub 用户 hovercard 补中文名**：可基于 GitHub 目录仓库 README 的 `GitHub / Name / Email` 映射，在 GitHub 原生 hovercard 名称区域补上中文名
 - 🚀 **实时监听**：自动检测页面变化、标签切换、URL 变化
 - ⚡ **性能优化**：防抖机制、智能缓存、避免重复处理
 - 🔄 **类型统一**：确保同一 tid 的所有链接类型一致
@@ -100,7 +100,7 @@ npm run build
 - **项目 ID 前缀**：项目中使用的项目 ID 前缀，多个用逗号分隔（如：`XX,M,F,XX`）
   - 支持大小写，如 `XX` 可匹配 `#XX-6616715346`
 - **GitHub 用户映射目录**：可选，填写 GitHub 目录仓库地址（如：`https://github.com/[org]/org`）
-  - 插件会读取 README 中 `GitHub / Name / Email` 表格，并在 GitHub 原生 hovercard 的用户名后追加如 `([email_prefix])` 的显示
+  - 插件会读取 README 中 `GitHub / Name / Email` 表格，优先使用 `Name` 列，并在 GitHub 原生 hovercard 名称区域追加如 `([中文名])` 的显示
 
 ### Sentry 配置（可选）
 - **Sentry 域名地址**：你的 Sentry 域名（如：`sentry.com`），支持多个，用逗号分隔
@@ -147,7 +147,7 @@ feat: 修复 detekt 报错 # XX-6616715346
 - 🎯 点击项目 ID 部分直接跳转到飞书
 - 💡 悬浮显示飞书项目信息
 - 🔄 自动根据 commit 类型判断 Issue/Story
-- 👤 配置 GitHub 用户映射目录后，hover 用户名时会在 GitHub 原生 hovercard 中显示邮箱前缀
+- 👤 配置 GitHub 用户映射目录后，hover 用户名时会在 GitHub 原生 hovercard 中显示中文名
 
 **配置示例：**
 - 域名地址：`github.com`
