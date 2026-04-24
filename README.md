@@ -35,7 +35,7 @@
 
 ### 商店安装
 
-[Chrome 应用商店](https://chromewebstore.google.com/detail/gitlab-link-to-lark/ocmkgfnifakgckfeofcoakiniljdjcfp)
+[Chrome 应用商店](https://chromewebstore.google.com/detail/lark-project-linker/kekfhompghbimkcldfjjdhmgnnfkmfbd?authuser=0&hl=zh-CN)
 
 ### 本地开发安装
 
