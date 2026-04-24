@@ -908,7 +908,7 @@ export function createGitHubHandler(context) {
   function buildGitHubUserDisplayName(userInfo) {
     if (!userInfo) return "";
 
-    return (userInfo.emailPrefix || "").trim();
+    return (userInfo.name || userInfo.emailPrefix || "").trim();
   }
 
   function parseGitHubUserAliasMap(htmlText) {
@@ -934,10 +934,12 @@ export function createGitHubHandler(context) {
 
         const githubLink = cells[githubIndex].querySelector("a[href]");
         const login = extractGitHubLoginFromLink(githubLink || cells[githubIndex]);
+        const name = nameIndex >= 0 ? (cells[nameIndex].textContent || "").trim() : "";
         const emailPrefix = extractEmailPrefix(cells[emailIndex].textContent || "");
 
-        if (login && emailPrefix) {
+        if (login && (name || emailPrefix)) {
           aliasMap.set(login, {
+            name,
             emailPrefix,
           });
         }
@@ -1019,16 +1021,24 @@ export function createGitHubHandler(context) {
     const loginLink = nameSection.querySelector('a[href]');
     if (!loginLink) return false;
 
+    const displayNameTarget = nameSection.querySelector(".Truncate") || loginLink;
+    const displayNameText = `(${displayName})`;
     const existing = nameSection.querySelector(".github-user-real-name");
     if (existing) {
-      existing.textContent = `(${displayName})`;
+      const isAlreadyPlaced = existing.previousElementSibling === displayNameTarget;
+      if (existing.textContent !== displayNameText) {
+        existing.textContent = displayNameText;
+      }
+      if (!isAlreadyPlaced) {
+        displayNameTarget.insertAdjacentElement("afterend", existing);
+      }
       return true;
     }
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "github-user-real-name";
-    nameSpan.textContent = `(${displayName})`;
-    loginLink.insertAdjacentElement("afterend", nameSpan);
+    nameSpan.textContent = displayNameText;
+    displayNameTarget.insertAdjacentElement("afterend", nameSpan);
 
     return true;
   }
@@ -1053,6 +1063,17 @@ export function createGitHubHandler(context) {
     return Array.from(containerSet);
   }
 
+  function getGitHubHovercardContainerFromAddedNode(node) {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return null;
+    if (node.classList?.contains("github-user-real-name")) return null;
+
+    if (node.matches?.(".Popover-message")) {
+      return node;
+    }
+
+    return node.closest?.(".Popover-message") || null;
+  }
+
   function enhanceGitHubHovercard(container) {
     if (!container) return;
 
@@ -1074,10 +1095,10 @@ export function createGitHubHandler(context) {
     githubUserHovercardObserver = new MutationObserver((mutations) => {
       mutations.forEach(mutation => {
         mutation.addedNodes.forEach(node => {
-          if (node.nodeType !== Node.ELEMENT_NODE) return;
-
-          const hovercards = collectGitHubHovercardContainers(node);
-          hovercards.forEach(enhanceGitHubHovercard);
+          const hovercard = getGitHubHovercardContainerFromAddedNode(node);
+          if (hovercard) {
+            enhanceGitHubHovercard(hovercard);
+          }
         });
       });
     });
