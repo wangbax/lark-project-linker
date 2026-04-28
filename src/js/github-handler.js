@@ -2,7 +2,11 @@
  * GitHub 平台特定处理逻辑
  */
 
-import { getLarkConfig } from "./store";
+import {
+  getLarkConfig,
+  loadGitHubUserAliasCache,
+  saveGitHubUserAliasCache
+} from "./store";
 
 export function createGitHubHandler(context) {
   const {
@@ -21,6 +25,8 @@ export function createGitHubHandler(context) {
   const githubUserAliasState = {
     sourceUrl: "",
     promise: null,
+    refreshSourceUrl: "",
+    refreshPromise: null,
     map: new Map(),
   };
   let githubUserHovercardObserver = null;
@@ -58,6 +64,18 @@ export function createGitHubHandler(context) {
         color: var(--fgColor-muted, #656d76);
         font-weight: 400;
         margin-left: 4px;
+      }
+      .js-issue-title .github-lark-id,
+      .js-issue-title .lark-project-link,
+      .markdown-title .github-lark-id,
+      .markdown-title .lark-project-link,
+      a.Link--primary .github-lark-id,
+      a.Link--primary .lark-project-link,
+      bdi[data-testid="issue-title"] .github-lark-id,
+      bdi[data-testid="issue-title"] .lark-project-link,
+      div[class*="Title-module__container"] .github-lark-id,
+      div[class*="Title-module__container"] .lark-project-link {
+        color: inherit;
       }
     `;
     document.head.appendChild(style);
@@ -483,7 +501,6 @@ export function createGitHubHandler(context) {
     span.dataset.tid = tid;
     span.dataset.larkType = type;
     span.dataset.larkUrl = url;
-    span.style.color = '#1890ff';
     span.style.cursor = 'pointer';
     span.style.fontWeight = '500';
     span.style.textDecoration = 'none';
@@ -627,7 +644,7 @@ export function createGitHubHandler(context) {
         let larkUrl = `https://project.feishu.cn/${LarkConfig.app}/${larkType}/detail/${projectId}`;
         
         // 创建内嵌飞书链接（使用 span 模拟链接，避免 a 嵌套问题）
-        const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${larkType}" data-lark-url="${larkUrl}" style="color: #1890ff; cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
+        const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${larkType}" data-lark-url="${larkUrl}" style="cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
         
         // 替换文本中的项目 ID
         newHTML = newHTML.replace(match, larkSpan);
@@ -813,7 +830,7 @@ export function createGitHubHandler(context) {
             const url = getLarkProjectLink(projectId, type);
             
             // 创建内嵌飞书链接 span
-            const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${type}" data-lark-url="${url}" style="color: #1890ff; cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
+            const larkSpan = `<span class="github-lark-id" data-tid="${tid}" data-lark-type="${type}" data-lark-url="${url}" style="cursor: pointer; font-weight: 500; text-decoration: none;">#${tid}</span>`;
             
             // 替换所有匹配的项目 ID
             newHTML = newHTML.replace(new RegExp(match.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), larkSpan);
@@ -956,6 +973,8 @@ export function createGitHubHandler(context) {
     if (!sourceUrl) {
       githubUserAliasState.sourceUrl = "";
       githubUserAliasState.promise = null;
+      githubUserAliasState.refreshSourceUrl = "";
+      githubUserAliasState.refreshPromise = null;
       githubUserAliasState.map = new Map();
       return githubUserAliasState.map;
     }
@@ -965,26 +984,58 @@ export function createGitHubHandler(context) {
     }
 
     githubUserAliasState.sourceUrl = sourceUrl;
-    githubUserAliasState.promise = fetch(sourceUrl, {
-      credentials: "include",
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`GitHub user directory request failed: ${response.status}`);
+    githubUserAliasState.promise = loadGitHubUserAliasCache(sourceUrl, { allowExpired: true })
+      .then(cachedMap => {
+        if (cachedMap) {
+          githubUserAliasState.map = cachedMap;
+          refreshGitHubUserAliasMap(sourceUrl);
+          return cachedMap;
         }
-        return response.text();
+
+        return fetchAndCacheGitHubUserAliasMap(sourceUrl);
       })
-      .then(htmlText => {
-        githubUserAliasState.map = parseGitHubUserAliasMap(htmlText);
-        return githubUserAliasState.map;
-      })
-      .catch(error => {
+      .catch(async error => {
         console.error("[GitHub Handler] 加载 GitHub 用户映射失败:", error);
         githubUserAliasState.map = new Map();
         return githubUserAliasState.map;
       });
 
     return githubUserAliasState.promise;
+  }
+
+  async function fetchAndCacheGitHubUserAliasMap(sourceUrl) {
+    const response = await fetch(sourceUrl, {
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      throw new Error(`GitHub user directory request failed: ${response.status}`);
+    }
+
+    const htmlText = await response.text();
+    const aliasMap = parseGitHubUserAliasMap(htmlText);
+    githubUserAliasState.map = aliasMap;
+    await saveGitHubUserAliasCache(sourceUrl, aliasMap);
+    return aliasMap;
+  }
+
+  function refreshGitHubUserAliasMap(sourceUrl) {
+    if (githubUserAliasState.refreshPromise && githubUserAliasState.refreshSourceUrl === sourceUrl) {
+      return githubUserAliasState.refreshPromise;
+    }
+
+    githubUserAliasState.refreshSourceUrl = sourceUrl;
+    githubUserAliasState.refreshPromise = fetchAndCacheGitHubUserAliasMap(sourceUrl)
+      .then(aliasMap => {
+        collectGitHubHovercardContainers(document.body).forEach(enhanceGitHubHovercard);
+        return aliasMap;
+      })
+      .catch(error => {
+        console.error("[GitHub Handler] 刷新 GitHub 用户映射缓存失败:", error);
+        return githubUserAliasState.map;
+      });
+
+    return githubUserAliasState.refreshPromise;
   }
 
   function extractLoginFromHovercard(container) {

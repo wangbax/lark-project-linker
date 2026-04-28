@@ -41,6 +41,8 @@ export const setLarkConfig = async (value) => {
 // 缓存配置
 const CACHE_KEY = 'LARK_PROJECT_TYPE_CACHE';
 const CACHE_EXPIRY_DAYS = 30; // 缓存有效期 30 天
+const GITHUB_USER_ALIAS_CACHE_KEY = 'GITHUB_USER_ALIAS_CACHE';
+const GITHUB_USER_ALIAS_CACHE_EXPIRY_DAYS = 30; // GitHub 用户映射缓存 30 天
 
 /**
  * 从本地存储加载缓存
@@ -143,12 +145,69 @@ export async function cleanExpiredCache() {
   }
 }
 
+// ==================== GitHub 用户映射缓存管理 ====================
+
+/**
+ * 加载 GitHub 用户映射缓存
+ * @param {string} sourceUrl - GitHub 用户目录仓库 URL
+ * @param {{allowExpired?: boolean}} options
+ * @returns {Promise<Map<string, {name: string, emailPrefix: string}> | null>}
+ */
+export async function loadGitHubUserAliasCache(sourceUrl, options = {}) {
+  if (!sourceUrl) return null;
+
+  try {
+    const result = await chrome.storage.local.get(GITHUB_USER_ALIAS_CACHE_KEY);
+    const cache = result[GITHUB_USER_ALIAS_CACHE_KEY] || {};
+    const item = cache[sourceUrl];
+
+    if (!item || !Array.isArray(item.entries)) return null;
+    if (!options.allowExpired && (!item.expiry || item.expiry <= Date.now())) {
+      return null;
+    }
+
+    const entries = item.entries.filter(([login, userInfo]) => {
+      return login && userInfo && (userInfo.name || userInfo.emailPrefix);
+    });
+
+    return entries.length > 0 ? new Map(entries) : null;
+  } catch (error) {
+    console.error('[GitHub User Alias Cache] 加载缓存失败:', error);
+    return null;
+  }
+}
+
+/**
+ * 保存 GitHub 用户映射缓存
+ * @param {string} sourceUrl - GitHub 用户目录仓库 URL
+ * @param {Map<string, {name: string, emailPrefix: string}>} aliasMap
+ */
+export async function saveGitHubUserAliasCache(sourceUrl, aliasMap) {
+  if (!sourceUrl || !aliasMap || aliasMap.size === 0) return;
+
+  try {
+    const result = await chrome.storage.local.get(GITHUB_USER_ALIAS_CACHE_KEY);
+    const cache = result[GITHUB_USER_ALIAS_CACHE_KEY] || {};
+    const expiry = Date.now() + (GITHUB_USER_ALIAS_CACHE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+    cache[sourceUrl] = {
+      entries: Array.from(aliasMap.entries()),
+      expiry,
+      updatedAt: Date.now(),
+    };
+
+    await chrome.storage.local.set({ [GITHUB_USER_ALIAS_CACHE_KEY]: cache });
+  } catch (error) {
+    console.error('[GitHub User Alias Cache] 保存缓存失败:', error);
+  }
+}
+
 /**
  * 清除所有缓存（用于调试）
  */
 export async function clearAllCache() {
   try {
-    await chrome.storage.local.remove(CACHE_KEY);
+    await chrome.storage.local.remove([CACHE_KEY, GITHUB_USER_ALIAS_CACHE_KEY]);
   } catch (error) {
     console.error('[Lark Cache] 清除缓存失败:', error);
   }
