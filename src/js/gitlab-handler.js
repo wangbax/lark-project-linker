@@ -149,7 +149,7 @@ export function createGitLabHandler(context) {
         }
 
         if (hasReplaced) {
-          nodeMap.set(row, true);
+          nodeMap.add(row);
         }
       });
     });
@@ -190,7 +190,7 @@ export function createGitLabHandler(context) {
     }
 
     if (hasReplaced) {
-      nodeMap.set(dom_project_last_commit, true);
+      nodeMap.add(dom_project_last_commit);
     }
   }
 
@@ -221,7 +221,7 @@ export function createGitLabHandler(context) {
       }
 
       if (hasReplaced) {
-        nodeMap.set(dom_a, true);
+        nodeMap.add(dom_a);
       }
     });
   }
@@ -257,7 +257,7 @@ export function createGitLabHandler(context) {
     }
 
     if (hasReplaced) {
-      nodeMap.set(dom_merge_request_title, true);
+      nodeMap.add(dom_merge_request_title);
     }
   }
 
