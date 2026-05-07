@@ -28,7 +28,10 @@ import { createGitHubHandler } from "./github-handler";
 main();
 
 async function main() {
-  if (!checkCondition()) return;
+  if (!(await checkCondition())) return;
+
+  const isGitHub = window.location.host.includes('github.com');
+  const isGitHubPullRequestPage = isGitHub && /^\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(window.location.pathname);
 
   // ==================== 全局状态 ====================
   
@@ -40,7 +43,7 @@ async function main() {
   let dom_lark_popover = null;
 
   // 已处理的 DOM 节点
-  const nodeMap = new Map();
+  const nodeMap = new WeakSet();
   
   // 已处理的元素（用 WeakSet 追踪）
   const processedElements = new WeakSet();
@@ -49,8 +52,23 @@ async function main() {
   const tidTypeMap = new Map();
 
   // 检测当前平台
-  const isGitHub = window.location.host.includes('github.com');
   const isGitLab = window.location.host.includes('gitlab');
+  const ignoredGitHubDynamicSelector = [
+    '#partial-pull-merging',
+    '.branch-action',
+    '.merge-pr',
+    '.merge-status-list',
+    '.js-merge-box',
+    '.js-checks-dropdown',
+    '.js-checks-status-button',
+    '[data-channel*="check"]',
+    '[data-channel*="merge"]',
+    'turbo-frame[src*="check"]',
+    'turbo-frame[id*="check"]',
+    '[id*="checks"]',
+    '[class*="Checks"]',
+    '[class*="checks"]'
+  ].join(', ');
 
   // ==================== 缓存管理 ====================
   
@@ -124,6 +142,7 @@ async function main() {
       font-size: 12px;
       line-height: 1.4;
       white-space: nowrap;
+      pointer-events: none;
     }
     .lark-popover::after {
       content: "";
@@ -353,6 +372,10 @@ async function main() {
     }
 
     Array.from(issueLinks).forEach(link => {
+      if (isGitHub && isIgnoredGitHubDynamicNode(link)) {
+        return;
+      }
+
       const text = link.textContent.trim();
       const match = text.match(new RegExp(`(${prefixList.join("|")})-\\d{7,}`, "i"));
 
@@ -378,6 +401,10 @@ async function main() {
           link.id?.startsWith('merge_request_') ||
           link.closest('.js-issue-row') !== null ||
           link.closest('.mr-list, .issuable-list') !== null;
+
+        if (isGitHub && isNavigationLink) {
+          return;
+        }
 
         if (isNavigationLink) {
           // 对于导航链接，在其内部替换文本为飞书链接
@@ -475,6 +502,11 @@ async function main() {
     const allGfmLinks = document.querySelectorAll(selector);
 
     allGfmLinks.forEach(link => {
+      if (isGitHub && isIgnoredGitHubDynamicNode(link)) {
+        processedElements.add(link);
+        return;
+      }
+
       const alreadyProcessed = processedElements.has(link) || link.classList.contains('lark-project-link');
 
       if (alreadyProcessed) {
@@ -541,6 +573,11 @@ async function main() {
           link.closest('.js-issue-row') !== null ||
           link.closest('.mr-list, .issuable-list') !== null;
 
+        if (isGitHub && isNavigationLink) {
+          processedElements.add(link);
+          return;
+        }
+
         if (isNavigationLink) {
           // 对于导航链接，在其内部替换文本为飞书链接
           const [isFind, newContent] = replaceProjectIdToLarkProjectLink(link);
@@ -591,7 +628,8 @@ async function main() {
     enterHandler,
     leaveHandler,
     removeGitLabTooltipAttributes,
-    getContextText
+    getContextText,
+    isGitHubPullRequestPage
   };
 
   // ==================== 初始化平台处理器 ====================
@@ -607,36 +645,174 @@ async function main() {
   }
 
   // ==================== 通用监听 ====================
-  
-  // 立即执行一次全局扫描
-  scanAllGfmLinks();
-  if (platformHandler && isGitHub) {
-    platformHandler.replaceGitHubCommits();
-    platformHandler.replaceGitHubPullRequests();
-    platformHandler.replaceGitHubUserAliases?.();
+
+  function scanCurrentPage() {
+    if (!isGitHubPullRequestPage) {
+      scanAllGfmLinks();
+    }
+
+    if (platformHandler && isGitHub) {
+      platformHandler.replaceGitHubCommits();
+      platformHandler.replaceGitHubPullRequests({
+        observeTitle: !isGitHubPullRequestPage,
+      });
+    }
   }
+
+  // 立即执行一次全局扫描
+  scanCurrentPage();
 
   // 防抖扫描
   let scanTimer = null;
+  const debugCounters = new Map();
+  const debugEntries = [];
+  let debugFlushTimer = null;
+
+  function isDebugEnabled() {
+    try {
+      return window.localStorage?.getItem("LARK_LINKER_DEBUG") === "1" ||
+        new URLSearchParams(window.location.search).has("lark_linker_debug");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function scheduleDebugFlush() {
+    if (debugFlushTimer || typeof chrome === "undefined" || !chrome.storage?.local) return;
+
+    debugFlushTimer = setTimeout(() => {
+      debugFlushTimer = null;
+      try {
+        const result = chrome.storage.local.set({
+          LARK_LINKER_DEBUG_LOGS_CORE: debugEntries,
+        });
+        if (result?.catch) {
+          result.catch(() => {});
+        }
+      } catch (error) {
+        // Debug logging must never affect the page.
+      }
+    }, 500);
+  }
+
+  function debugLog(label, data = {}) {
+    if (!isDebugEnabled()) return;
+
+    const count = (debugCounters.get(label) || 0) + 1;
+    debugCounters.set(label, count);
+    console.debug("[Lark Linker]", label, {
+      count,
+      url: window.location.href,
+      ...data,
+    });
+
+    debugEntries.push({
+      at: new Date().toISOString(),
+      label,
+      count,
+      url: window.location.href,
+      ...data,
+    });
+    if (debugEntries.length > 100) {
+      debugEntries.shift();
+    }
+    scheduleDebugFlush();
+  }
+
   function debouncedScanAllGfmLinks() {
+    debugLog("debouncedScanAllGfmLinks:schedule");
+
     if (scanTimer) {
       clearTimeout(scanTimer);
     }
     scanTimer = setTimeout(() => {
-      scanAllGfmLinks();
-      if (platformHandler && isGitHub) {
-        platformHandler.replaceGitHubCommits();
-        platformHandler.replaceGitHubPullRequests();
-        platformHandler.replaceGitHubUserAliases?.();
-      }
+      const startedAt = performance.now();
+      scanCurrentPage();
+      debugLog("debouncedScanAllGfmLinks:run", {
+        durationMs: Math.round((performance.now() - startedAt) * 10) / 10,
+      });
     }, 100);
   }
 
-  // 页面变化监听
+  function isExtensionGeneratedNode(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) {
+      return true;
+    }
+
+    return node.matches(
+      '.github-lark-id, .lark-project-link, .github-user-real-name, .lark-popover'
+    );
+  }
+
+  function isIgnoredGitHubDynamicNode(node) {
+    if (!isGitHub || node.nodeType !== Node.ELEMENT_NODE) {
+      return false;
+    }
+
+    return node.matches(ignoredGitHubDynamicSelector) || Boolean(node.closest(ignoredGitHubDynamicSelector));
+  }
+
+  function isRelevantPageNode(node) {
+    if (
+      node.nodeType !== Node.ELEMENT_NODE ||
+      isExtensionGeneratedNode(node) ||
+      isIgnoredGitHubDynamicNode(node)
+    ) {
+      return false;
+    }
+
+    if (!isGitHub) {
+      return true;
+    }
+
+    const ignoredGitHubSelector = [
+      '.Popover-message',
+      'tool-tip',
+      '[role="tooltip"]',
+      '.js-hovercard-content',
+      'details-menu',
+      'clipboard-copy'
+    ].join(', ');
+
+    if (node.matches(ignoredGitHubSelector) || node.closest(ignoredGitHubSelector)) {
+      return false;
+    }
+
+    const relevantGitHubSelector = [
+      '.comment-body',
+      '.timeline-comment',
+      '.markdown-body',
+      '.js-issue-title',
+      '.markdown-title',
+      'bdi[data-testid="issue-title"]',
+      'div[class*="Title-module__container"]',
+      '[data-testid="commit-row-item"]',
+      '.commit-group',
+      '.commits-list-item',
+      'a.issue-link',
+      'a[data-hovercard-type="issue"]',
+      'a[data-hovercard-type="pull_request"]',
+      'a[href*="/commit/"]',
+      'a[href*="/commits/"]',
+      'a[href*="/pull/"][href*="/changes/"]'
+    ].join(', ');
+
+    return node.matches(relevantGitHubSelector) || Boolean(node.querySelector(relevantGitHubSelector));
+  }
+
+  // GitHub 的 Checks/merge 状态会持续异步更新，只在真正相关的内容节点出现时重扫。
   const observer = new MutationObserver((mutations) => {
     let shouldScan = false;
     for (const mutation of mutations) {
-      if (mutation.addedNodes.length > 0) {
+      const hasPageNode = Array.from(mutation.addedNodes).some(node => {
+        return isRelevantPageNode(node);
+      });
+
+      if (hasPageNode) {
+        debugLog("mutationObserver:relevant", {
+          addedNodes: mutation.addedNodes.length,
+          target: mutation.target?.nodeName,
+        });
         shouldScan = true;
         break;
       }
@@ -658,12 +834,7 @@ async function main() {
     if (currentUrl !== lastUrl) {
       lastUrl = currentUrl;
       setTimeout(() => {
-        scanAllGfmLinks();
-        if (platformHandler && isGitHub) {
-          platformHandler.replaceGitHubCommits();
-          platformHandler.replaceGitHubPullRequests();
-          platformHandler.replaceGitHubUserAliases?.();
-        }
+        scanCurrentPage();
       }, 500);
     }
   });
@@ -679,12 +850,7 @@ async function main() {
   // popstate 事件监听
   window.addEventListener('popstate', () => {
     setTimeout(() => {
-      scanAllGfmLinks();
-      if (platformHandler && isGitHub) {
-        platformHandler.replaceGitHubCommits();
-        platformHandler.replaceGitHubPullRequests();
-        platformHandler.replaceGitHubUserAliases?.();
-      }
+      scanCurrentPage();
     }, 500);
   });
 

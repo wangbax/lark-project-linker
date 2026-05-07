@@ -6,10 +6,10 @@ main();
 async function main() {
   chrome.runtime.onMessage.addListener(function (e, sender, sendResponse) {
     const { message, data } = e;
-    const tabId = sender.tab.id;
+    const tabId = sender.tab?.id;
     switch (message) {
       case MSG_EVENT.INIT:
-        chrome.tabs.sendMessage(tabId, {
+        sendMessageToTab(tabId, {
           message: MSG_EVENT.INIT,
           data: {
             msg: "init",
@@ -19,7 +19,7 @@ async function main() {
       case MSG_EVENT.GET_LARK_PROJECT_INFO:
         getLarkProjectInfo(data).then((resData) => {
           if (!resData) return;
-          chrome.tabs.sendMessage(tabId, {
+          sendMessageToTab(tabId, {
             message: MSG_EVENT.GET_LARK_PROJECT_INFO,
             data: resData,
           });
@@ -27,6 +27,19 @@ async function main() {
         break;
     }
   });
+}
+
+function sendMessageToTab(tabId, payload) {
+  if (!tabId) return;
+
+  try {
+    const result = chrome.tabs.sendMessage(tabId, payload);
+    if (result?.catch) {
+      result.catch(() => {});
+    }
+  } catch (error) {
+    // The content script may have been unloaded after a navigation.
+  }
 }
 
 const extractScriptContent = (text) => {
