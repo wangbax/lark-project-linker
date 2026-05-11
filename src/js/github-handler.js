@@ -989,6 +989,7 @@ export function createGitHubHandler(context) {
       .then(cachedMap => {
         if (cachedMap) {
           githubUserAliasState.map = cachedMap;
+          refreshGitHubUserAliasMap(sourceUrl);
           return cachedMap;
         }
 
